@@ -1,0 +1,50 @@
+{
+  "name": "nike-nairobi",
+  "private": true,
+  "overrides": {
+    "magic-string": "0.30.17"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx lib/db/seed.ts",
+    "db:import": "tsx lib/db/import-catalogue.ts",
+    "test": "tsx --test lib/shop.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1170.0",
+    "@neondatabase/serverless": "^1.2.1",
+    "@stripe/react-stripe-js": "^7.1.0",
+    "@stripe/stripe-js": "^10.3.0",
+    "dotenv": "^18.0.10",
+    "drizzle-orm": "^0.45.4",
+    "framer-motion": "^14.14.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "resend": "^6.39.0",
+    "stripe": "^23.1.0",
+    "ws": "^8.23.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.6",
+    "postcss": "^8.5.33",
+    "sharp": "^0.35.5",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

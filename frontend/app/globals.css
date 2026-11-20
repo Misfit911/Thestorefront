@@ -1,0 +1,74 @@
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-arimo), "Helvetica Neue", Helvetica, sans-serif;
+  --color-ink: #111111;
+  --color-muted: #707072;
+  --color-line: #e5e5e5;
+  --color-canvas: #f6f6f6;
+  --color-sale: #d30000;
+  --color-member: #128a00;
+}
+
+html,
+body {
+  background: #fff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+input:focus-visible {
+  outline: 2px solid #111;
+  outline-offset: 2px;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .scrollbar-none-sm {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none-sm::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 50s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
