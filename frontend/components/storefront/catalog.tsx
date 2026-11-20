@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type SyntheticEvent } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { applyFilters, filterOptions, filtersActive } from "@/lib/catalog";
 import { departmentHeading, type Product } from "@/lib/types";
 import { MediaImage } from "@/components/media-image";
@@ -167,29 +167,31 @@ export function HeroPanel({
     if (image.naturalWidth > 0 && image.naturalHeight > 0) setRatio(image.naturalWidth / image.naturalHeight);
   }
   return (
-    <section
-      className={`relative w-full @container ${ratio ? "md:h-[min(calc(100cqw/var(--hero-ratio)),100dvh)] md:overflow-hidden" : ""}`}
-      style={ratio ? ({ "--hero-ratio": String(ratio) } as CSSProperties) : undefined}
-    >
-      <MediaImage
-        src={image}
-        alt=""
-        ref={(node) => {
-          if (node?.complete) rememberSize(node);
-        }}
-        onLoad={(event: SyntheticEvent<HTMLImageElement>) => rememberSize(event.currentTarget)}
-        className={`block h-auto w-full ${ratio ? "md:absolute md:inset-0 md:h-full md:object-cover" : ""}`}
-      />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/15" />
-      <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center px-6 pb-10 text-center text-white md:pb-14">
-        <p className="text-base">{eyebrow}</p>
-        <h2 className="mt-2 max-w-md whitespace-pre-line text-4xl font-black uppercase leading-[0.95] tracking-tight md:text-6xl">
-          {headline}
-        </h2>
-        <button type="button" onClick={onShop} className="mt-5 rounded-full bg-white px-7 py-2 text-sm font-medium text-ink">
-          {buttonLabel}
-        </button>
-      </div>
-    </section>
+    <div className="@container w-full">
+      <section
+        className="relative w-full overflow-hidden"
+        style={ratio ? { height: `min(calc(100cqw / ${ratio}), 100dvh)` } : { maxHeight: "100dvh" }}
+      >
+        <MediaImage
+          src={image}
+          alt=""
+          ref={(node) => {
+            if (node?.complete) rememberSize(node);
+          }}
+          onLoad={(event: SyntheticEvent<HTMLImageElement>) => rememberSize(event.currentTarget)}
+          className={ratio ? "absolute inset-0 h-full w-full object-cover" : "block h-auto w-full max-h-[100dvh] object-cover"}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/15" />
+        <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center px-6 pb-10 text-center text-white md:pb-14">
+          <p className="text-base">{eyebrow}</p>
+          <h2 className="mt-2 max-w-md whitespace-pre-line text-4xl font-black uppercase leading-[0.95] tracking-tight md:text-6xl">
+            {headline}
+          </h2>
+          <button type="button" onClick={onShop} className="mt-5 rounded-full bg-white px-7 py-2 text-sm font-medium text-ink">
+            {buttonLabel}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
