@@ -340,7 +340,7 @@ export function CheckoutSheet() {
               className={`rounded-xl border px-4 py-4 text-left text-sm font-medium disabled:opacity-40 ${method === "mpesa" ? "border-ink" : "border-line"}`}
             >
               M-Pesa
-              {!data.payments.mpesa ? <span className="mt-1 block text-xs font-normal text-muted">Not configured</span> : null}
+              {!data.payments.mpesa ? <span className="mt-1 block text-xs font-normal text-muted">Currently not available. Try another payment method.</span> : null}
             </button>
           </div>
           {method === "card" && data.payments.stripePublishableKey && cardSession ? (

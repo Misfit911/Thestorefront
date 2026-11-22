@@ -134,3 +134,44 @@ test("payment readiness tells live mode from sandbox", () => {
   assert.equal(sandbox.stripe, "mismatch");
   assert.equal(sandbox.mpesa, "missing");
 });
+
+test("member welcome and order emails use the right copy", async () => {
+  const { welcomeEmail, orderReceiptEmail, orderStatusEmail } = await import("./email-templates");
+  const welcome = welcomeEmail({ to: "member@example.com", fullName: "Ada Khan" });
+  assert.match(welcome.subject, /Nike Member/i);
+  assert.match(welcome.html, /You're a Nike Member/);
+  const receipt = orderReceiptEmail({
+    orderId: "1",
+    orderNumber: "ND-1001",
+    status: "paid",
+    statusDetail: null,
+    email: "ada@example.com",
+    fullName: "Ada Khan",
+    phone: "0700000000",
+    fulfillment: "delivery",
+    area: "Westlands",
+    street: "Waiyaki Way",
+    note: null,
+    pickupAddress: null,
+    subtotalCents: 100000,
+    deliveryFeeCents: 0,
+    totalCents: 100000,
+    paymentMethod: "card",
+    mpesaReceipt: null,
+    createdAt: new Date().toISOString(),
+    items: [{ name: "Air Force 1", subtitle: "Shoes", size: "UK 8", color: "White", quantity: 1, unitPriceCents: 100000, image: "" }],
+  });
+  assert.match(receipt.subject, /ND-1001/);
+  assert.match(receipt.html, /Air Force 1/);
+  assert.match(receipt.html, /KES 1,000/);
+  const cancelled = orderStatusEmail({
+    fullName: "Ada Khan",
+    orderNumber: "ND-1001",
+    status: "cancelled",
+    totalCents: 100000,
+  });
+  assert.match(cancelled.subject, /cancelled/i);
+  assert.match(cancelled.text, /5 business days/);
+  assert.match(cancelled.html, /5 business days/);
+  assert.match(cancelled.html, /KES 1,000/);
+});

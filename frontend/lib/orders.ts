@@ -331,13 +331,21 @@ export async function updateOrderStatus(orderId: string, next: string) {
         inventoryHeld: next === "cancelled" ? false : current.inventoryHeld,
       })
       .where(eq(orders.id, orderId));
-    return { email: current.email, fullName: current.fullName, orderNumber: current.orderNumber };
+    return {
+      email: current.email,
+      fullName: current.fullName,
+      orderNumber: current.orderNumber,
+      fulfillment: current.fulfillment,
+      totalCents: current.totalCents,
+    };
   });
   await sendOrderStatusEmail({
     to: notice.email,
     fullName: notice.fullName,
     orderNumber: notice.orderNumber,
     status: next,
+    fulfillment: notice.fulfillment,
+    totalCents: notice.totalCents,
   });
 }
 
