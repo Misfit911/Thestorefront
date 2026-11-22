@@ -31,8 +31,8 @@ function wrapEmail(title: string, inner: string, footer?: string) {
         <td align="center" style="padding:24px 12px;">
           <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:100%;background:#ffffff;">
             <tr>
-              <td style="padding:28px 32px 12px;border-bottom:1px solid #e5e5e5;">
-                <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:0.18em;">NIKE</p>
+              <td style="padding:28px 32px 20px;border-bottom:1px solid #e5e5e5;">
+                <img src="${siteUrl()}/nike-swoosh.png" alt="Nike" width="66" height="26" style="display:block;border:0;outline:none;height:26px;width:66px;" />
               </td>
             </tr>
             <tr>
@@ -68,12 +68,12 @@ function button(href: string, label: string) {
 
 export function welcomeEmail(input: { fullName: string; to: string }) {
   const url = siteUrl();
-  const subject = "Welcome to Nike Member";
+  const subject = "Welcome to the Nike Community";
   const first = input.fullName.trim().split(/\s+/)[0] || "there";
   const html = wrapEmail(
     subject,
     [
-      heading("You're a Nike Member"),
+      heading("You're now a Nike Member"),
       paragraph(`Hi ${escapeHtml(first)},`),
       paragraph("Your Nike Member account is ready. Sign in with this email to unlock member prices and keep your orders in one place."),
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;">
