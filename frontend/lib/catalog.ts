@@ -1,6 +1,12 @@
 import { unitPriceCents } from "@/lib/pricing";
 import { compareSizeLabels } from "@/lib/sizes";
-import type { Department, FilterState, Gender, PriceBand, Product } from "@/lib/types";
+import type { Department, FilterState, Gender, PriceBand, Product, StorefrontPayload } from "@/lib/types";
+
+export function shopDepartments(data: Pick<StorefrontPayload, "departments" | "products">) {
+  return data.departments.filter((department) =>
+    data.products.some((product) => product.departments.some((entry) => entry.department === department.slug)),
+  );
+}
 
 export function priceBand(cents: number): PriceBand {
   const shillings = cents / 100;

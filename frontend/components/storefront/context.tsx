@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { selectionQuantity, variantQuantity } from "@/lib/stock";
-import { DEPARTMENTS, emptyFilters, type BagLine, type Department, type FilterState, type Gender, type KidsChoice, type KnownOrder, type OrderReceipt, type PriceBand, type StorefrontPayload } from "@/lib/types";
+import { shopDepartments } from "@/lib/catalog";
+import { emptyFilters, type BagLine, type Department, type FilterState, type Gender, type KidsChoice, type KnownOrder, type OrderReceipt, type PriceBand, type StorefrontPayload } from "@/lib/types";
 
 export type OverlayInput =
   | { type: "menu" }
@@ -12,6 +13,7 @@ export type OverlayInput =
   | { type: "checkout" }
   | { type: "success"; receipt: OrderReceipt }
   | { type: "orders" }
+  | { type: "help" }
   | { type: "favourites" }
   | { type: "filters" }
   | { type: "filter"; chip: "gender" | "kids" | "price" | "sale" | "size" | "color" };
@@ -74,11 +76,7 @@ function toggleItem<T>(list: T[], value: T) {
 
 export function StoreProvider({ data, children }: { data: StorefrontPayload; children: React.ReactNode }) {
   const [department, setDepartment] = useState<Department>(() => {
-    return (
-      DEPARTMENTS.find((item) =>
-        data.products.some((product) => product.departments.some((entry) => entry.department === item)),
-      ) ?? "new"
-    );
+    return shopDepartments(data)[0]?.slug ?? data.departments[0]?.slug ?? "";
   });
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,9 +107,9 @@ export function StoreProvider({ data, children }: { data: StorefrontPayload; chi
 
   useEffect(() => {
     try {
-      setBag(JSON.parse(localStorage.getItem("nn-bag") || "[]"));
-      setFavourites(JSON.parse(localStorage.getItem("nn-favourites") || "[]"));
-      setKnownOrders(JSON.parse(localStorage.getItem("nn-orders") || "[]"));
+      setBag(JSON.parse(localStorage.getItem(`nn-bag:${data.settings.slug}`) || "[]"));
+      setFavourites(JSON.parse(localStorage.getItem(`nn-favourites:${data.settings.slug}`) || "[]"));
+      setKnownOrders(JSON.parse(localStorage.getItem(`nn-orders:${data.settings.slug}`) || "[]"));
     } catch {
       setBag([]);
     } finally {
@@ -121,24 +119,24 @@ export function StoreProvider({ data, children }: { data: StorefrontPayload; chi
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem("nn-bag", JSON.stringify(bag));
+    localStorage.setItem(`nn-bag:${data.settings.slug}`, JSON.stringify(bag));
   }, [bag, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem("nn-favourites", JSON.stringify(favourites));
+    localStorage.setItem(`nn-favourites:${data.settings.slug}`, JSON.stringify(favourites));
   }, [favourites, ready]);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem("nn-orders", JSON.stringify(knownOrders));
+    localStorage.setItem(`nn-orders:${data.settings.slug}`, JSON.stringify(knownOrders));
   }, [knownOrders, ready]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch("/api/members/me");
+        const response = await fetch(`/api/members/me?store=${encodeURIComponent(data.settings.slug)}`);
         if (!response.ok) return;
         const json = (await response.json()) as { member: { fullName: string; email: string } | null };
         if (!cancelled) setMember(json.member);

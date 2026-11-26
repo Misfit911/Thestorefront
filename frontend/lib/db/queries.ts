@@ -1,20 +1,44 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/index";
 import {
   categories,
+  departments,
   heroes,
   highlights,
+  platformSettings,
   productColors,
   productDepartments,
   productImages,
   productInventory,
   productSizes,
   products,
-  storeSettings,
+  stores,
 } from "@/lib/db/schema";
-import type { Department, Gender, Hero, Product, StorefrontPayload } from "@/lib/types";
-import { isDepartment } from "@/lib/types";
 import { publishableStripeKey, stripeConfigured } from "@/lib/stripe";
+import { isPublicSubscription } from "@/lib/stores";
+import type { Gender, Product, StorefrontPayload } from "@/lib/types";
+
+export type ManagedStore = {
+  id: string;
+  slug: string;
+  companyName: string;
+  logo: string;
+  description: string;
+  socialUrl: string;
+  announcement: string;
+  pickupAddress: string;
+  deliveryFeeCents: number;
+  freeDeliveryThresholdCents: number;
+  subscriptionStatus: string;
+  adminAccessEnabled: boolean;
+};
+
+export type DirectoryStore = {
+  slug: string;
+  companyName: string;
+  logo: string;
+  description: string;
+};
 
 function payments() {
   const publishableKey = publishableStripeKey();
@@ -36,27 +60,78 @@ function asGender(value: string): Gender {
   return "unisex";
 }
 
-function asHeroSlot(value: string): Hero["slot"] | null {
-  if (value === "hero1" || value === "hero2" || value === "hero3") return value;
-  return null;
+function mapStore(row: typeof stores.$inferSelect): ManagedStore {
+  return {
+    id: row.id,
+    slug: row.slug,
+    companyName: row.companyName,
+    logo: row.logo,
+    description: row.description,
+    socialUrl: row.socialUrl,
+    announcement: row.announcement,
+    pickupAddress: row.pickupAddress,
+    deliveryFeeCents: row.deliveryFeeCents,
+    freeDeliveryThresholdCents: row.freeDeliveryThresholdCents,
+    subscriptionStatus: row.subscriptionStatus,
+    adminAccessEnabled: row.adminAccessEnabled,
+  };
 }
 
-export async function loadCatalog(activeOnly: boolean) {
-  const [settingsRow] = await db.select().from(storeSettings).limit(1);
-  if (!settingsRow) throw new Error("STORE_NOT_SEEDED");
+export async function loadPlatformSettings() {
+  const [row] = await db.select().from(platformSettings).where(eq(platformSettings.id, "platform")).limit(1);
+  if (!row) return null;
+  return { companyName: row.companyName, logo: row.logo };
+}
 
-  const [heroRows, highlightRows, categoryRows, productRows, departmentRows, colorRows, sizeRows, imageRows, stockRows] =
+export async function listManageStores() {
+  const rows = await db.select().from(stores).orderBy(asc(stores.companyName));
+  return rows.map(mapStore);
+}
+
+export async function listDirectoryStores(): Promise<DirectoryStore[]> {
+  const rows = await listManageStores();
+  return rows
+    .filter((store) => isPublicSubscription(store.subscriptionStatus))
+    .map((store) => ({
+      slug: store.slug,
+      companyName: store.companyName,
+      logo: store.logo,
+      description: store.description,
+    }));
+}
+
+export async function getStoreBySlug(slug: string) {
+  const [row] = await db.select().from(stores).where(eq(stores.slug, slug)).limit(1);
+  return row ? mapStore(row) : null;
+}
+
+export async function getStoreById(id: string) {
+  const [row] = await db.select().from(stores).where(eq(stores.id, id)).limit(1);
+  return row ? mapStore(row) : null;
+}
+
+export async function loadCatalog(storeId: string, activeOnly: boolean): Promise<StorefrontPayload | null> {
+  const [settingsRow] = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
+  if (!settingsRow) return null;
+
+  const [departmentRows, heroRows, highlightRows, categoryRows, productRows, assignmentRows, colorRows, sizeRows, imageRows, stockRows] =
     await Promise.all([
-      db.select().from(heroes),
-      db.select().from(highlights).orderBy(asc(highlights.sort)),
-      db.select().from(categories).orderBy(asc(categories.sort)),
-      activeOnly ? db.select().from(products).where(eq(products.active, true)) : db.select().from(products),
+      db.select().from(departments).where(eq(departments.storeId, storeId)).orderBy(asc(departments.sort)),
+      db.select().from(heroes).where(eq(heroes.storeId, storeId)).orderBy(asc(heroes.sort)),
+      db.select().from(highlights).where(eq(highlights.storeId, storeId)).orderBy(asc(highlights.sort)),
+      db.select().from(categories).where(eq(categories.storeId, storeId)).orderBy(asc(categories.sort)),
+      db
+        .select()
+        .from(products)
+        .where(activeOnly ? and(eq(products.storeId, storeId), eq(products.active, true)) : eq(products.storeId, storeId)),
       db.select().from(productDepartments),
       db.select().from(productColors).orderBy(asc(productColors.sort)),
       db.select().from(productSizes).orderBy(asc(productSizes.sort)),
       db.select().from(productImages).orderBy(asc(productImages.sort)),
       db.select().from(productInventory),
     ]);
+
+  const departmentSlugs = new Set(departmentRows.map((department) => department.slug));
 
   const mappedProducts: Product[] = productRows.map((product) => ({
     id: product.id,
@@ -71,9 +146,9 @@ export async function loadCatalog(activeOnly: boolean) {
     gender: asGender(product.gender),
     kids: product.kids,
     active: product.active,
-    departments: departmentRows
-      .filter((entry) => entry.productId === product.id && isDepartment(entry.department))
-      .map((entry) => ({ department: entry.department as Department, category: entry.category })),
+    departments: assignmentRows
+      .filter((entry) => entry.productId === product.id && departmentSlugs.has(entry.department))
+      .map((entry) => ({ department: entry.department, category: entry.category })),
     colors: colorRows
       .filter((color) => color.productId === product.id)
       .map((color) => ({ id: color.id, name: color.name, hex: color.hex, sort: color.sort })),
@@ -102,24 +177,34 @@ export async function loadCatalog(activeOnly: boolean) {
   }));
 
   const payload: StorefrontPayload = {
+    storeId: settingsRow.id,
     settings: {
       companyName: settingsRow.companyName,
       logo: settingsRow.logo,
+      description: settingsRow.description,
+      socialUrl: settingsRow.socialUrl,
       announcement: settingsRow.announcement,
       pickupAddress: settingsRow.pickupAddress,
       deliveryFeeCents: settingsRow.deliveryFeeCents,
       freeDeliveryThresholdCents: settingsRow.freeDeliveryThresholdCents,
+      slug: settingsRow.slug,
+      subscriptionStatus: settingsRow.subscriptionStatus,
+      adminAccessEnabled: settingsRow.adminAccessEnabled,
     },
+    departments: departmentRows.map((department) => ({
+      id: department.id,
+      slug: department.slug,
+      name: department.name,
+      sort: department.sort,
+    })),
     heroes: heroRows.flatMap((hero) => {
-      const slot = asHeroSlot(hero.slot);
-      if (!slot) return [];
-      const department = hero.department && isDepartment(hero.department) ? hero.department : null;
-      if (slot === "hero3" && !department) return [];
+      if (hero.department && !departmentSlugs.has(hero.department)) return [];
       return [
         {
           id: hero.id,
-          slot,
-          department,
+          slot: hero.slot,
+          department: hero.department,
+          sort: hero.sort,
           eyebrow: hero.eyebrow,
           headline: hero.headline,
           image: hero.image,
@@ -133,7 +218,7 @@ export async function loadCatalog(activeOnly: boolean) {
       sort: highlight.sort,
     })),
     categories: categoryRows.flatMap((category) => {
-      if (!isDepartment(category.department)) return [];
+      if (!departmentSlugs.has(category.department)) return [];
       return [
         {
           id: category.id,
@@ -150,10 +235,16 @@ export async function loadCatalog(activeOnly: boolean) {
   return payload;
 }
 
-export function getStorefront() {
-  return loadCatalog(true);
+export async function getStorefront(slug: string) {
+  const store = await getStoreBySlug(slug);
+  if (!store) return null;
+  const catalog = await loadCatalog(store.id, true);
+  if (!catalog) return null;
+  return { store, catalog, available: isPublicSubscription(store.subscriptionStatus) };
 }
 
-export function getAdminCatalog() {
-  return loadCatalog(false);
+export async function getAdminCatalog(storeId: string) {
+  const catalog = await loadCatalog(storeId, false);
+  if (!catalog) throw new Error("STORE_NOT_SEEDED");
+  return catalog;
 }

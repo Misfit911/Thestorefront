@@ -1,0 +1,1 @@
+ALTER TABLE "stores" ADD COLUMN IF NOT EXISTS "social_url" text DEFAULT '' NOT NULL;

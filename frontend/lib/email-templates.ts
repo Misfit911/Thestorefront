@@ -32,7 +32,7 @@ function wrapEmail(title: string, inner: string, footer?: string) {
           <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:100%;background:#ffffff;">
             <tr>
               <td style="padding:28px 32px 20px;border-bottom:1px solid #e5e5e5;">
-                <img src="${siteUrl()}/nike-swoosh.png" alt="Nike" width="66" height="26" style="display:block;border:0;outline:none;height:26px;width:66px;" />
+                <img src="${siteUrl()}/customs_kenya_logo.png" alt="Customs_Kenya" width="50" height="50" style="display:block;border:0;outline:none;height:50px;width:50px;" />
               </td>
             </tr>
             <tr>
@@ -41,7 +41,7 @@ function wrapEmail(title: string, inner: string, footer?: string) {
             <tr>
               <td style="padding:0 32px 32px;color:#707072;font-size:12px;line-height:1.6;">
                 ${note}<br /><br />
-                Nike Deals
+                Customs Kenya
               </td>
             </tr>
           </table>
@@ -68,14 +68,14 @@ function button(href: string, label: string) {
 
 export function welcomeEmail(input: { fullName: string; to: string }) {
   const url = siteUrl();
-  const subject = "Welcome to the Nike Community";
+  const subject = "Welcome to the Community of Custom Kenya Members";
   const first = input.fullName.trim().split(/\s+/)[0] || "there";
   const html = wrapEmail(
     subject,
     [
-      heading("You're now a Nike Member"),
+      heading("You're now a Member"),
       paragraph(`Hi ${escapeHtml(first)},`),
-      paragraph("Your Nike Member account is ready. Sign in with this email to unlock member prices and keep your orders in one place."),
+      paragraph("Your Membership account is ready. Sign in with this email to unlock member prices and keep your orders in one place."),
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;">
         <tr><td style="padding:10px 0;border-bottom:1px solid #e5e5e5;font-size:14px;">Member prices on selected styles</td></tr>
         <tr><td style="padding:10px 0;border-bottom:1px solid #e5e5e5;font-size:14px;">Faster checkout with your saved details</td></tr>
@@ -88,10 +88,10 @@ export function welcomeEmail(input: { fullName: string; to: string }) {
   const text = [
     `Hi ${input.fullName},`,
     "",
-    "You're a Nike Member. Your account is ready.",
+    "You're now a Member. Your account is ready.",
     `Sign in with ${input.to} at ${url} to buy member prices and keep your orders in one place.`,
     "",
-    "Nike Deals",
+    "Customs Kenya",
   ].join("\n");
   return { subject, html, text };
 }
@@ -163,7 +163,7 @@ export function orderReceiptEmail(receipt: OrderReceipt) {
     "",
     `Look this order up any time at ${siteUrl()} with the order number and this email.`,
     "",
-    "Nike Deals",
+    "Customs Kenya",
   ].join("\n");
   return { subject, html, text };
 }
@@ -174,6 +174,12 @@ function statusCopy(input: {
   totalCents?: number;
 }) {
   const label = orderStatusLabel(input.status);
+  if (input.status === "received") {
+    return {
+      title: "We've received your order",
+      body: "We've received your order and will start preparing it.",
+    };
+  }
   if (input.status === "packing") {
     return {
       title: "We're packing your order",
@@ -195,7 +201,7 @@ function statusCopy(input: {
   if (input.status === "completed") {
     return {
       title: input.fulfillment === "pickup" ? "Pickup complete" : "Delivered",
-      body: "Your order is complete. Thanks for shopping with Nike Deals.",
+      body: "Your order is complete. Thanks for shopping with Customs Kenya.",
     };
   }
   if (input.status === "cancelled") {
@@ -223,7 +229,9 @@ export function orderStatusEmail(input: {
   const subject =
     input.status === "cancelled"
       ? `Order ${input.orderNumber} cancelled`
-      : `Order ${input.orderNumber} is ${label.toLowerCase()}`;
+      : input.status === "received"
+        ? `We've received your order ${input.orderNumber}`
+        : `Order ${input.orderNumber} is ${label.toLowerCase()}`;
   const first = input.fullName.trim().split(/\s+/)[0] || "there";
   const extra =
     input.status === "cancelled"
@@ -249,9 +257,54 @@ export function orderStatusEmail(input: {
     "",
     `Look it up at ${siteUrl()} with this order number and your email.`,
     "",
-    "Nike Deals",
+    "Customs Kenya",
   ]
     .filter((line, index, lines) => line !== "" || lines[index - 1] !== "")
     .join("\n");
+  return { subject, html, text };
+}
+
+export function placedOrderNotificationEmail(input: {
+  storeName: string;
+  pickupAddress: string;
+  receipt: OrderReceipt;
+}) {
+  const receipt = input.receipt;
+  const destination =
+    receipt.fulfillment === "pickup"
+      ? `Pickup: ${input.pickupAddress}`
+      : `Delivery: ${[receipt.area, receipt.street].filter(Boolean).join(", ") || "Address not provided"}\nPickup address: ${input.pickupAddress}`;
+  const items = itemLines(receipt);
+  const subject = `New order ${receipt.orderNumber} · ${input.storeName}`;
+  const text = [
+    `New order for ${input.storeName}`,
+    "",
+    `Order ${receipt.orderNumber}`,
+    receipt.fullName,
+    receipt.email,
+    receipt.phone,
+    destination,
+    receipt.note ? `Note: ${receipt.note}` : "",
+    "",
+    ...items,
+    "",
+    `Total: ${formatKes(receipt.totalCents)}`,
+  ]
+    .filter((line, index, lines) => line !== "" || lines[index - 1] !== "")
+    .join("\n");
+  const html = wrapEmail(
+    subject,
+    [
+      heading(`New order · ${input.storeName}`),
+      paragraph(`Order <strong>${escapeHtml(receipt.orderNumber)}</strong>`),
+      paragraph(
+        `${escapeHtml(receipt.fullName)}<br />${escapeHtml(receipt.email)}<br />${escapeHtml(receipt.phone)}<br />${escapeHtml(destination).replaceAll("\n", "<br />")}`,
+      ),
+      receipt.note ? paragraph(`Note: ${escapeHtml(receipt.note)}`) : "",
+      `<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.6;">${items.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`,
+      paragraph(`<strong>Total ${formatKes(receipt.totalCents)}</strong>`),
+    ].join(""),
+    escapeHtml(input.storeName),
+  );
   return { subject, html, text };
 }

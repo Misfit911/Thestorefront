@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { loadStripe, type Stripe } from "@stripe/stripe-js";
+import { useMemo, useState } from "react";
 import { deliveryFeeFor, formatKes } from "@/lib/money";
 import { unitPriceCents } from "@/lib/pricing";
 import { variantQuantity } from "@/lib/stock";
@@ -14,13 +12,6 @@ import { IconChevron } from "@/components/storefront/icons";
 import { ProductPrice } from "@/components/storefront/price";
 import { BackLink } from "@/components/storefront/sheet";
 import { useStore } from "@/components/storefront/context";
-
-let stripePromise: Promise<Stripe | null> | null = null;
-
-function stripeClient(key: string) {
-  if (!stripePromise) stripePromise = loadStripe(key);
-  return stripePromise;
-}
 
 type FormState = {
   fullName: string;
@@ -39,15 +30,9 @@ export function CheckoutSheet() {
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saved, setSaved] = useState(false);
-  const [method, setMethod] = useState<"card" | "mpesa" | null>(null);
-  const [mpesaPhone, setMpesaPhone] = useState("");
   const [bagOpen, setBagOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [cardSession, setCardSession] = useState<{ orderId: string; clientSecret: string; email: string } | null>(null);
-  const cardSessionRef = useRef(cardSession);
-  const paidRef = useRef(false);
-  cardSessionRef.current = cardSession;
 
   const lines = bag.map((line) => ({
     line,
@@ -67,10 +52,11 @@ export function CheckoutSheet() {
     /^\S+@\S+\.\S+$/.test(form.email.trim()) &&
     Boolean(normalizeKePhone(form.phone)) &&
     (fulfillment === "pickup" || (form.area.trim().length > 0 && form.street.trim().length > 0));
-  const paymentOpen = fulfillment === "pickup" ? contactReady : saved;
+  const reviewOpen = fulfillment === "pickup" ? contactReady : saved;
 
   const payload = useMemo(
     () => ({
+      storeSlug: data.settings.slug,
       items: bag.map((line) => ({
         productId: line.productId,
         size: line.size,
@@ -85,118 +71,36 @@ export function CheckoutSheet() {
       street: form.street.trim(),
       note: form.note.trim(),
     }),
-    [bag, form, fulfillment],
+    [bag, data.settings.slug, form, fulfillment],
   );
-  const signature = JSON.stringify(payload);
-
-  useEffect(() => {
-    if (method !== "card" || !paymentOpen || !data.payments.stripe || unavailable || oversold) return;
-    const controller = new AbortController();
-    let alive = true;
-    setCardSession(null);
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch("/api/checkout/stripe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-        const json = await response.json();
-        if (!alive) {
-          if (response.ok) {
-            void fetch("/api/checkout/cancel", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orderId: json.orderId, email: json.email }),
-            });
-          }
-          return;
-        }
-        if (!response.ok) {
-          setError(json.error || "Card payment could not be started");
-          return;
-        }
-        setCardSession({ orderId: json.orderId, clientSecret: json.clientSecret, email: json.email });
-        setError(null);
-      } catch (requestError) {
-        if ((requestError as Error).name !== "AbortError" && alive) setError("Card payment could not be started");
-      }
-    }, 300);
-    return () => {
-      alive = false;
-      controller.abort();
-      window.clearTimeout(timer);
-      const session = cardSessionRef.current;
-      if (!session || paidRef.current) return;
-      cardSessionRef.current = null;
-      void fetch("/api/checkout/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: session.orderId, email: session.email }),
-      });
-    };
-  }, [data.payments.stripe, method, oversold, payload, paymentOpen, signature, unavailable]);
 
   function finish(receipt: OrderReceipt) {
-    paidRef.current = true;
     clearBag();
     rememberOrder({ orderId: receipt.orderId, orderNumber: receipt.orderNumber, email: receipt.email });
     showSuccess(receipt);
   }
 
-  async function cancelCard() {
-    if (!cardSession) return;
-    await fetch("/api/checkout/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId: cardSession.orderId, email: cardSession.email }),
-    });
-    setCardSession(null);
-  }
-
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     if (fulfillment === "delivery") setSaved(false);
-    setMethod(null);
-    void cancelCard();
   }
 
-  async function payMpesa() {
-    if (oversold) return;
-    if (!normalizeKePhone(mpesaPhone)) {
-      setError("Enter the Safaricom number that should receive the prompt");
-      return;
-    }
+  async function placeOrder() {
+    if (oversold || unavailable) return;
     setBusy(true);
     setError(null);
-    const response = await fetch("/api/checkout/mpesa", {
+    const response = await fetch("/api/checkout/place", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, mpesaPhone }),
+      body: JSON.stringify(payload),
     });
-    const json = await response.json();
+    const json = (await response.json()) as OrderReceipt & { error?: string };
     if (!response.ok) {
-      setError(json.error || "M-Pesa could not start");
+      setError(json.error || "The order could not be placed");
       setBusy(false);
       return;
     }
-    const started = Date.now();
-    while (Date.now() - started < 90_000) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      const statusResponse = await fetch(`/api/orders/${json.orderId}?email=${encodeURIComponent(json.email)}`);
-      const status = (await statusResponse.json()) as OrderReceipt & { error?: string };
-      if (status.status === "paid") {
-        finish(status);
-        return;
-      }
-      if (status.status === "failed" || status.status === "cancelled") {
-        setError(status.statusDetail || "M-Pesa payment was not completed. Your bag is unchanged.");
-        setBusy(false);
-        return;
-      }
-    }
-    setError("Still waiting for the M-Pesa prompt. If you already approved it, find the order from the menu.");
+    finish(json);
     setBusy(false);
   }
 
@@ -215,7 +119,6 @@ export function CheckoutSheet() {
           {lines.reduce((sum, entry) => sum + entry.line.quantity, 0)} items | {formatKes(total)}
         </p>
       </div>
-      
       <div className="border-t border-line px-5">
         <button type="button" className="flex w-full items-center justify-between py-4 text-lg font-medium" onClick={() => setBagOpen((open) => !open)} aria-expanded={bagOpen}>
           In Your Bag
@@ -241,6 +144,9 @@ export function CheckoutSheet() {
       </div>
       <section className="border-t border-line px-5 py-6">
         <h3 className="text-2xl font-medium">Delivery Options</h3>
+        <p className="mt-4 text-sm leading-6">
+          Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span>
+        </p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           {(["delivery", "pickup"] as const).map((option) => (
             <button
@@ -249,8 +155,7 @@ export function CheckoutSheet() {
               onClick={() => {
                 setFulfillment(option);
                 setSaved(false);
-                setMethod(null);
-                void cancelCard();
+                setError(null);
               }}
               className={`rounded-xl border px-3 py-4 text-sm font-medium ${fulfillment === option ? "border-ink" : "border-line"}`}
             >
@@ -260,6 +165,9 @@ export function CheckoutSheet() {
         </div>
         {fulfillment === "delivery" && !saved ? (
           <div className="mt-5 space-y-3">
+            <p className="text-sm leading-6">
+              Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span>
+            </p>
             <Field label="Full name" value={form.fullName} onChange={(value) => update("fullName", value)} />
             <Field label="Email address" value={form.email} onChange={(value) => update("email", value)} type="email" />
             <Field label="Phone number" value={form.phone} onChange={(value) => update("phone", value)} type="tel" />
@@ -281,21 +189,14 @@ export function CheckoutSheet() {
         ) : null}
         {fulfillment === "delivery" && saved ? (
           <div className="mt-5 text-sm leading-6">
+            <p>Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span></p>
             <p className="font-medium">{form.fullName}</p>
             <p>{form.email}</p>
             <p>{form.phone}</p>
             <p>{form.area}</p>
             <p>{form.street}</p>
             {form.note ? <p>{form.note}</p> : null}
-            <button
-              type="button"
-              className="mt-2 underline underline-offset-4"
-              onClick={() => {
-                setSaved(false);
-                setMethod(null);
-                void cancelCard();
-              }}
-            >
+            <button type="button" className="mt-2 underline underline-offset-4" onClick={() => setSaved(false)}>
               Edit
             </button>
           </div>
@@ -310,76 +211,23 @@ export function CheckoutSheet() {
             <Field label="Phone number" value={form.phone} onChange={(value) => update("phone", value)} type="tel" />
           </div>
         ) : null}
+        {reviewOpen ? (
+          <Review
+            subtotal={subtotal}
+            delivery={delivery}
+            total={total}
+            busy={busy || oversold || unavailable}
+            onBuy={() => void placeOrder()}
+          />
+        ) : null}
+        {error ? <p className="mt-4 text-sm text-sale">{error}</p> : null}
+        {unavailable ? <p className="mt-4 text-sm text-sale">Remove unavailable items from your bag before placing the order.</p> : null}
+        {stockShort?.product ? (
+          <p className="mt-4 text-sm text-sale">
+            {stockShort.product.name} has {variantQuantity(stockShort.product.stock, stockShort.line.color, stockShort.line.size)} available in that size and colour. Lower the quantity before placing the order.
+          </p>
+        ) : null}
       </section>
-      {paymentOpen ? (
-        <section className="border-t border-line px-5 py-6">
-          <h3 className="text-2xl font-medium">Payment</h3>
-          <p className="mt-4 text-sm text-muted">Select payment method</p>
-          <div className="mt-3 grid gap-3">
-            <button
-              type="button"
-              disabled={!data.payments.stripe || unavailable || oversold}
-              onClick={() => {
-                setMethod("card");
-                setError(null);
-              }}
-              className={`rounded-xl border px-4 py-4 text-left text-sm font-medium disabled:opacity-40 ${method === "card" ? "border-ink" : "border-line"}`}
-            >
-              Card or debit card
-              {!data.payments.stripe ? <span className="mt-1 block text-xs font-normal text-muted">Not configured</span> : null}
-            </button>
-            <button
-              type="button"
-              disabled={!data.payments.mpesa || unavailable || oversold}
-              onClick={() => {
-                void cancelCard();
-                setMethod("mpesa");
-                setMpesaPhone((current) => current || form.phone);
-                setError(null);
-              }}
-              className={`rounded-xl border px-4 py-4 text-left text-sm font-medium disabled:opacity-40 ${method === "mpesa" ? "border-ink" : "border-line"}`}
-            >
-              M-Pesa
-              {!data.payments.mpesa ? <span className="mt-1 block text-xs font-normal text-muted">Currently not available. Try another payment method.</span> : null}
-            </button>
-          </div>
-          {method === "card" && data.payments.stripePublishableKey && cardSession ? (
-            <div className="mt-5">
-              <Elements
-                stripe={stripeClient(data.payments.stripePublishableKey)}
-                options={{
-                  clientSecret: cardSession.clientSecret,
-                  appearance: { variables: { fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif", colorPrimary: "#111111", borderRadius: "12px" } },
-                }}
-              >
-                <CardPayment
-                  orderId={cardSession.orderId}
-                  email={cardSession.email}
-                  onPaid={finish}
-                  subtotal={subtotal}
-                  delivery={delivery}
-                  total={total}
-                />
-              </Elements>
-            </div>
-          ) : null}
-          {method === "card" && !cardSession && !error ? <p className="mt-4 text-sm text-muted">Preparing secure card payment…</p> : null}
-          {method === "mpesa" ? (
-            <div className="mt-5">
-              <Field label="M-Pesa phone" value={mpesaPhone} onChange={setMpesaPhone} type="tel" />
-              <p className="mt-2 text-xs text-muted">A Safaricom prompt will ask for your M-Pesa PIN. The bag stays until the payment is confirmed.</p>
-              <Review subtotal={subtotal} delivery={delivery} total={total} busy={busy || oversold} label="Buy with M-Pesa" onBuy={() => void payMpesa()} />
-            </div>
-          ) : null}
-          {error ? <p className="mt-4 text-sm text-sale">{error}</p> : null}
-          {unavailable ? <p className="mt-4 text-sm text-sale">Remove unavailable items from your bag before paying.</p> : null}
-          {stockShort?.product ? (
-            <p className="mt-4 text-sm text-sale">
-              {stockShort.product.name} has {variantQuantity(stockShort.product.stock, stockShort.line.color, stockShort.line.size)} available in that size and colour. Lower the quantity before paying.
-            </p>
-          ) : null}
-        </section>
-      ) : null}
       <div className="px-5 pb-6 text-center">
         <button type="button" onClick={() => push({ type: "bag" })} className="text-sm underline underline-offset-4">
           Review bag
@@ -420,20 +268,19 @@ function Review({
   total,
   onBuy,
   busy,
-  label,
 }: {
   subtotal: number;
   delivery: number;
   total: number;
   onBuy: () => void;
   busy: boolean;
-  label: string;
 }) {
   const { bag, data, member } = useStore();
   const signedIn = Boolean(member);
   return (
     <div className="mt-6 border-t border-line pt-5">
       <h3 className="text-2xl font-medium">Order Review</h3>
+      <p className="mt-3 text-sm">Pickup address: {data.settings.pickupAddress}</p>
       <ul className="mt-4 space-y-3 text-sm">
         {bag.map((line) => {
           const product = data.products.find((item) => item.id === line.productId);
@@ -453,69 +300,8 @@ function Review({
         <p className="flex justify-between text-base font-medium"><span>Total</span><span>{formatKes(total)}</span></p>
       </div>
       <button type="button" disabled={busy} onClick={onBuy} className="mt-5 w-full rounded-full bg-ink py-3.5 text-white disabled:opacity-50">
-        {busy ? "Waiting for confirmation…" : label}
+        {busy ? "Placing order…" : "Place order"}
       </button>
-    </div>
-  );
-}
-
-function CardPayment({
-  orderId,
-  email,
-  onPaid,
-  subtotal,
-  delivery,
-  total,
-}: {
-  orderId: string;
-  email: string;
-  onPaid: (receipt: OrderReceipt) => void;
-  subtotal: number;
-  delivery: number;
-  total: number;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function pay() {
-    if (!stripe || !elements) return;
-    setBusy(true);
-    setError(null);
-    const result = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: window.location.origin },
-    });
-    if (result.error) {
-      setError(result.error.message || "Card payment failed");
-      setBusy(false);
-      return;
-    }
-    const response = await fetch("/api/checkout/stripe/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, email }),
-    });
-    const receipt = (await response.json()) as OrderReceipt & { error?: string };
-    if (!response.ok || receipt.status !== "paid") {
-      setError(receipt.error || receipt.statusDetail || "Payment is still processing");
-      setBusy(false);
-      return;
-    }
-    onPaid(receipt);
-  }
-
-  return (
-    <div>
-      <PaymentElement
-        onLoadError={(event) => {
-          setError(event.error?.message || "The card form could not be loaded.");
-        }}
-      />
-      {error ? <p className="mt-3 text-sm text-sale">{error}</p> : null}
-      <Review subtotal={subtotal} delivery={delivery} total={total} busy={busy || !stripe || Boolean(error)} label="Buy" onBuy={() => void pay()} />
     </div>
   );
 }

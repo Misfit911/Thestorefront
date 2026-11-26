@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useStore } from "@/components/storefront/context";
 
 export function Newsletter() {
+  const { data } = useStore();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "removing" | "removed">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -14,7 +16,7 @@ export function Newsletter() {
     const response = await fetch("/api/newsletter", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ storeSlug: data.settings.slug, email }),
     });
     const body = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -31,7 +33,7 @@ export function Newsletter() {
     const response = await fetch("/api/newsletter/unsubscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ storeSlug: data.settings.slug, email }),
     });
     const body = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -44,9 +46,9 @@ export function Newsletter() {
 
   return (
     <section className="bg-[#0c1411] px-6 py-25 text-center text-white" style={{margin: "25px 0 25px"}}>
-      <h2 className="text-4xl font-black leading-[0.95] tracking-tight md:text-6xl">Become A Nike Member</h2>
-      <p className="mt-4 text-base text-white/90">Join Nike Members by creating an account then sign in to access Members Only price deals.</p>
-      <p className="mt-4 text-base text-white/90">Sign up below to be the first to get the latest news and product updates from Nike.</p>
+      <h2 className="text-4xl font-black leading-[0.95] tracking-tight md:text-6xl">Become Member</h2>
+      <p className="mt-4 text-base text-white/90">Join other Members by creating an account then sign in to access Members Only price deals.</p>
+      <p className="mt-4 text-base text-white/90">Sign up below to be the first to get the latest news and product updates.</p>
       {status === "done" || status === "removing" ? (
         <div className="mt-8">
           <p className="text-sm tracking-wide">You&apos;re on the list.</p>

@@ -1,5 +1,7 @@
 export const ORDER_STATUSES = [
   "pending",
+  "placed",
+  "received",
   "paid",
   "packing",
   "ready",
@@ -13,6 +15,8 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: "Awaiting payment",
+  placed: "Placed",
+  received: "Received",
   paid: "Paid",
   packing: "Packing",
   ready: "Ready for pickup",
@@ -30,6 +34,8 @@ export function orderStatusLabel(status: string) {
 }
 
 export function nextStatuses(status: string, fulfillment: string) {
+  if (status === "placed") return ["received", "cancelled"];
+  if (status === "received") return ["packing", "cancelled"];
   if (status === "paid") return ["packing", "cancelled"];
   if (status === "packing") {
     return fulfillment === "pickup" ? ["ready", "cancelled"] : ["out_for_delivery", "cancelled"];
@@ -39,5 +45,5 @@ export function nextStatuses(status: string, fulfillment: string) {
 }
 
 export function isOpenFulfilment(status: string) {
-  return status === "paid" || status === "packing" || status === "ready" || status === "out_for_delivery";
+  return status === "placed" || status === "received" || status === "paid" || status === "packing" || status === "ready" || status === "out_for_delivery";
 }

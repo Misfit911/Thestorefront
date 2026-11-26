@@ -8,30 +8,65 @@ const RETURNS = DEMO_DELIVERY_RETURNS;
 async function main() {
   const { db } = await import("./index");
   const schema = await import("./schema");
-  const { eq } = await import("drizzle-orm");
+  const { eq, isNull } = await import("drizzle-orm");
+  const { hashPassword } = await import("../passwords");
+  const { NIKE_STORE_ID } = await import("../stores");
+  const { writeThemeFile } = await import("../theme-file");
 
-  const existing = await db.select().from(schema.storeSettings);
+  const existing = await db.select().from(schema.stores);
   if (existing.length > 0) {
+    const password = process.env.ADMIN_PASSWORD;
+    if (password) {
+      const passwordHash = await hashPassword(password);
+      const missing = await db.select().from(schema.stores).where(isNull(schema.stores.passwordHash));
+      for (const row of missing) {
+        await db.update(schema.stores).set({ passwordHash }).where(eq(schema.stores.id, row.id));
+      }
+    }
+    for (const row of existing) await writeThemeFile(row.slug);
     console.log("Store already has settings. Seed skipped.");
     return;
   }
 
-  await db.insert(schema.storeSettings).values({
-    id: "default",
+  const password = process.env.ADMIN_PASSWORD;
+  const passwordHash = password ? await hashPassword(password) : null;
+  await db.insert(schema.platformSettings).values({
+    id: "platform",
     companyName: "Nike Nairobi",
     logo: "/nike_logo.jpg",
+  });
+  await db.insert(schema.stores).values({
+    id: NIKE_STORE_ID,
+    slug: "nike",
+    companyName: "Nike Nairobi",
+    logo: "/nike_logo.jpg",
+    description: "Nike store in Nairobi.",
+    socialUrl: "",
     announcement:
-      "Demonstration catalog. Delivery fees are calculated at checkout.\nPickup shows no delivery fee. Timing is confirmed only after payment.",
+      "Demonstration catalog. Delivery fees are calculated at checkout.\nPickup shows no delivery fee. Timing is confirmed after the store receives the order.",
     pickupAddress: "Nike Nairobi, Westlands, Waiyaki Way, Nairobi",
     deliveryFeeCents: 45000,
     freeDeliveryThresholdCents: 1_500_000,
+    subscriptionStatus: "active",
+    adminAccessEnabled: true,
+    passwordHash,
   });
+  await writeThemeFile("nike");
+  await db.insert(schema.departments).values([
+    { id: "dept-nike-new", storeId: NIKE_STORE_ID, slug: "new", name: "New", sort: 0 },
+    { id: "dept-nike-men", storeId: NIKE_STORE_ID, slug: "men", name: "Men", sort: 1 },
+    { id: "dept-nike-women", storeId: NIKE_STORE_ID, slug: "women", name: "Women", sort: 2 },
+    { id: "dept-nike-kids", storeId: NIKE_STORE_ID, slug: "kids", name: "Kids", sort: 3 },
+    { id: "dept-nike-sport", storeId: NIKE_STORE_ID, slug: "sport", name: "Sport", sort: 4 },
+  ]);
 
   await db.insert(schema.heroes).values([
     {
       id: "hero1",
+      storeId: NIKE_STORE_ID,
       slot: "hero1",
       department: null,
+      sort: 0,
       eyebrow: "Nike Winter Essentials",
       headline: "Winter Heat\nJust Landed",
       image: "/screenshots/NEW/1.png",
@@ -39,8 +74,10 @@ async function main() {
     },
     {
       id: "hero2",
+      storeId: NIKE_STORE_ID,
       slot: "hero2",
       department: null,
+      sort: 1,
       eyebrow: "Nike Tech",
       headline: "Outlast Everything",
       image: "/screenshots/NEW/3.png",
@@ -48,6 +85,7 @@ async function main() {
     },
     {
       id: "hero3-new",
+      storeId: NIKE_STORE_ID,
       slot: "hero3",
       department: "new",
       eyebrow: "Just In",
@@ -57,6 +95,7 @@ async function main() {
     },
     {
       id: "hero3-men",
+      storeId: NIKE_STORE_ID,
       slot: "hero3",
       department: "men",
       eyebrow: "Men",
@@ -66,6 +105,7 @@ async function main() {
     },
     {
       id: "hero3-women",
+      storeId: NIKE_STORE_ID,
       slot: "hero3",
       department: "women",
       eyebrow: "Women",
@@ -75,6 +115,7 @@ async function main() {
     },
     {
       id: "hero3-kids",
+      storeId: NIKE_STORE_ID,
       slot: "hero3",
       department: "kids",
       eyebrow: "Kids",
@@ -84,6 +125,7 @@ async function main() {
     },
     {
       id: "hero3-sport",
+      storeId: NIKE_STORE_ID,
       slot: "hero3",
       department: "sport",
       eyebrow: "Sport",
@@ -94,10 +136,10 @@ async function main() {
   ]);
 
   await db.insert(schema.highlights).values([
-    { id: "hl-1", image: "/screenshots/NEW/2.png", sort: 0 },
-    { id: "hl-2", image: "/screenshots/MEN_WOMEN_KIDS_SPORT/main.png", sort: 1 },
-    { id: "hl-3", image: "/screenshots/Product_view/1.png", sort: 2 },
-    { id: "hl-4", image: "/screenshots/MEN_WOMEN_KIDS_SPORT/main_hero.png", sort: 3 },
+    { id: "hl-1", storeId: NIKE_STORE_ID, image: "/screenshots/NEW/2.png", sort: 0 },
+    { id: "hl-2", storeId: NIKE_STORE_ID, image: "/screenshots/MEN_WOMEN_KIDS_SPORT/main.png", sort: 1 },
+    { id: "hl-3", storeId: NIKE_STORE_ID, image: "/screenshots/Product_view/1.png", sort: 2 },
+    { id: "hl-4", storeId: NIKE_STORE_ID, image: "/screenshots/MEN_WOMEN_KIDS_SPORT/main_hero.png", sort: 3 },
   ]);
 
   const categoryRows = [
@@ -112,6 +154,7 @@ async function main() {
     categoryRows.flatMap(([department, names]) =>
       names.map((name, sort) => ({
         id: `cat-${department}-${sort}`,
+        storeId: NIKE_STORE_ID,
         name,
         department,
         sort,
@@ -311,6 +354,7 @@ async function main() {
   for (const product of catalog) {
     await db.insert(schema.products).values({
       id: product.id,
+      storeId: NIKE_STORE_ID,
       name: product.name,
       subtitle: product.subtitle,
       description: product.description,

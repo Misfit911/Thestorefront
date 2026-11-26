@@ -4,69 +4,122 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   addCategoryAction,
+  addDepartmentAction,
+  addHeroAction,
   addHighlightAction,
+  createStoreAction,
   deleteCategoryAction,
+  deleteDepartmentAction,
+  deleteHeroAction,
   deleteHighlightAction,
   deleteProductAction,
   logoutAction,
+  moveCategoryAction,
+  moveDepartmentAction,
   moveHighlightAction,
   saveHeroAction,
+  savePlatformAction,
   saveProductAction,
   saveSettingsAction,
   setProductActiveAction,
+  storeLogoutAction,
+  updateStoreAction,
 } from "@/app/admin/actions";
 import { OrdersPanel } from "@/app/admin/orders-panel";
 import { ImageField } from "@/components/image-field";
 import { MediaImage } from "@/components/media-image";
+import type { ManagedStore } from "@/lib/db/queries";
 import { DEMO_DELIVERY_RETURNS } from "@/lib/policy";
+import { MAX_DEPARTMENTS, MAX_PRODUCT_IMAGES } from "@/lib/stores";
 import { stockCombinations } from "@/lib/stock";
-import { DEPARTMENTS, departmentLabel, type Department, type Gender, type Hero, type Product, type StorefrontPayload } from "@/lib/types";
+import { departmentLabel, type Department, type Gender, type Hero, type Product, type StorefrontPayload } from "@/lib/types";
 
-type Tab = "store" | "orders" | "heroes" | "highlights" | "categories" | "products";
+type StudioMode = "platform" | "store";
+type Tab = "platform" | "stores" | "all-orders" | "store" | "orders" | "heroes" | "highlights" | "categories" | "products";
 
-export function Studio({ data }: { data: StorefrontPayload }) {
-  const [tab, setTab] = useState<Tab>("store");
+export function Studio({
+  mode,
+  platform,
+  stores,
+  data,
+}: {
+  mode: StudioMode;
+  platform: { companyName: string; logo: string };
+  stores: ManagedStore[];
+  data: StorefrontPayload | null;
+}) {
+  const [tab, setTab] = useState<Tab>(mode === "platform" ? "stores" : "store");
+  const title = mode === "platform" ? platform.companyName : data?.settings.companyName || platform.companyName;
+  const tabs: [Tab, string][] =
+    mode === "platform"
+      ? [
+          ["platform", "Platform"],
+          ["stores", "Stores"],
+          ["all-orders", "Orders"],
+          ...(data
+            ? ([
+                ["store", "Store info"],
+                ["orders", "Store orders"],
+                ["heroes", "Heroes"],
+                ["highlights", "Highlights"],
+                ["categories", "Categories"],
+                ["products", "Products"],
+              ] as [Tab, string][])
+            : []),
+        ]
+      : [
+          ["store", "Store"],
+          ["orders", "Orders"],
+          ["heroes", "Heroes"],
+          ["highlights", "Highlights"],
+          ["categories", "Categories"],
+          ["products", "Products"],
+        ];
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f6f6f6]">
       <header className="flex items-center justify-between bg-ink px-5 py-4 text-white">
         <div>
-          <p className="text-xs uppercase tracking-wide text-white/70">Nike Nairobi</p>
+          <p className="text-xs uppercase tracking-wide text-white/70">{title}</p>
           <h1 className="text-xl font-medium">Studio</h1>
         </div>
-        <form action={logoutAction}>
+        <form action={mode === "store" && data ? storeLogoutAction.bind(null, data.settings.slug) : logoutAction}>
           <button type="submit" className="text-sm underline underline-offset-4">Sign out</button>
         </form>
       </header>
+      {mode === "platform" ? (
+        <div className="flex gap-2 overflow-x-auto px-4 pt-3">
+          <a href="/admin" className="rounded-full bg-white px-4 py-2 text-sm">All stores</a>
+          {stores.map((store) => (
+            <a key={store.id} href={`/admin?store=${store.slug}`} className={`rounded-full px-4 py-2 text-sm ${data?.storeId === store.id ? "bg-ink text-white" : "bg-white"}`}>
+              {store.companyName}
+            </a>
+          ))}
+        </div>
+      ) : null}
       <div className="flex gap-2 overflow-x-auto px-4 py-3">
-        {(
-          [
-            ["store", "Store"],
-            ["orders", "Orders"],
-            ["heroes", "Heroes"],
-            ["highlights", "Highlights"],
-            ["categories", "Categories"],
-            ["products", "Products"],
-          ] as const
-        ).map(([id, label]) => (
+        {tabs.map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-full px-4 py-2 text-sm ${tab === id ? "bg-ink text-white" : "bg-white"}`}>
             {label}
           </button>
         ))}
       </div>
       <div className="mx-auto min-w-0 max-w-3xl px-4 pb-16 [&_form]:min-w-0 [&_input]:max-w-full [&_input]:min-w-0 [&_select]:max-w-full [&_textarea]:max-w-full">
-        {tab === "store" ? <StoreForm data={data} /> : null}
-        {tab === "orders" ? <OrdersPanel /> : null}
-        {tab === "heroes" ? <HeroForms heroes={data.heroes} /> : null}
-        {tab === "highlights" ? <Highlights data={data} /> : null}
-        {tab === "categories" ? <Categories data={data} /> : null}
-        {tab === "products" ? <Products data={data} /> : null}
+        {tab === "platform" ? <PlatformForm platform={platform} /> : null}
+        {tab === "stores" ? <StoresPanel stores={stores} /> : null}
+        {tab === "all-orders" ? <OrdersPanel showStore /> : null}
+        {data && tab === "store" ? <StoreForm data={data} allowPassword={mode === "store"} /> : null}
+        {data && tab === "orders" ? <OrdersPanel storeId={data.storeId} /> : null}
+        {data && tab === "heroes" ? <HeroForms data={data} /> : null}
+        {data && tab === "highlights" ? <Highlights data={data} /> : null}
+        {data && tab === "categories" ? <Categories data={data} /> : null}
+        {data && tab === "products" ? <Products data={data} /> : null}
       </div>
     </div>
   );
 }
 
-function savedNote(result: { error?: string }) {
-  return result.error ?? "Saved";
+function savedNote(result: { error?: string } | { ok: true }) {
+  return "error" in result ? result.error ?? "Saved" : "Saved";
 }
 
 function Notice({ message }: { message: string | null }) {
@@ -74,15 +127,115 @@ function Notice({ message }: { message: string | null }) {
   return <p className="mt-3 text-sm text-sale">{message}</p>;
 }
 
-function StoreForm({ data }: { data: StorefrontPayload }) {
+function PlatformForm({ platform }: { platform: { companyName: string; logo: string } }) {
+  const router = useRouter();
+  const [form, setForm] = useState(platform);
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <form
+      className="space-y-3 min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const result = await savePlatformAction(form);
+        setMessage(savedNote(result));
+        router.refresh();
+      }}
+    >
+      <h2 className="text-lg font-medium">Platform</h2>
+      <p className="text-sm text-muted">This name is the page title for the directory and this studio. This logo is the favicon.</p>
+      <label className="block text-sm">Company name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })} /></label>
+      <ImageField label="Logo" value={form.logo} onChange={(logo) => setForm({ ...form, logo })} />
+      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save platform</button>
+      <Notice message={message} />
+    </form>
+  );
+}
+
+function StoresPanel({ stores }: { stores: ManagedStore[] }) {
+  return (
+    <div className="space-y-4">
+      <StoreRegistryForm />
+      {stores.map((store) => (
+        <StoreRegistryForm key={store.id} store={store} />
+      ))}
+    </div>
+  );
+}
+
+function StoreRegistryForm({ store }: { store?: ManagedStore }) {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    slug: store?.slug ?? "",
+    companyName: store?.companyName ?? "",
+    logo: store?.logo ?? "",
+    description: store?.description ?? "",
+    socialUrl: store?.socialUrl ?? "",
+    announcement: store?.announcement ?? "Delivery fees are calculated at checkout.",
+    pickupAddress: store?.pickupAddress ?? "",
+    deliveryFeeKes: String((store?.deliveryFeeCents ?? 0) / 100),
+    freeDeliveryThresholdKes: String((store?.freeDeliveryThresholdCents ?? 0) / 100),
+    subscriptionStatus: store?.subscriptionStatus ?? "trial",
+    adminAccessEnabled: store?.adminAccessEnabled ?? true,
+    password: "",
+  });
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <form
+      className="space-y-3 min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const payload = {
+          ...form,
+          deliveryFeeKes: Number(form.deliveryFeeKes),
+          freeDeliveryThresholdKes: Number(form.freeDeliveryThresholdKes),
+        };
+        const result = store ? await updateStoreAction({ ...payload, id: store.id }) : await createStoreAction(payload);
+        setMessage(savedNote(result));
+        if ("ok" in result) router.refresh();
+      }}
+    >
+      <h2 className="text-lg font-medium">{store ? store.companyName : "Register a store"}</h2>
+      <label className="block text-sm">Path<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value.toLowerCase() })} placeholder="new_store" /></label>
+      <p className="text-xs text-muted">The shop opens at /{form.slug || "path"} and its studio at /{form.slug || "path"}/admin.</p>
+      <label className="block text-sm">Company name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })} /></label>
+      <ImageField label="Logo" value={form.logo} onChange={(logo) => setForm({ ...form, logo })} />
+      <label className="block text-sm">Description<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+      <label className="block text-sm">Social page<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.socialUrl} onChange={(event) => setForm({ ...form, socialUrl: event.target.value })} placeholder="https://instagram.com/yourshop" /></label>
+      <label className="block text-sm">Announcement<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.announcement} onChange={(event) => setForm({ ...form, announcement: event.target.value })} /></label>
+      <label className="block text-sm">Pickup address<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.pickupAddress} onChange={(event) => setForm({ ...form, pickupAddress: event.target.value })} /></label>
+      <label className="block text-sm">Delivery fee (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.deliveryFeeKes} onChange={(event) => setForm({ ...form, deliveryFeeKes: event.target.value })} /></label>
+      <label className="block text-sm">Free delivery from (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.freeDeliveryThresholdKes} onChange={(event) => setForm({ ...form, freeDeliveryThresholdKes: event.target.value })} /></label>
+      <label className="block text-sm">Subscription
+        <select className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.subscriptionStatus} onChange={(event) => setForm({ ...form, subscriptionStatus: event.target.value })}>
+          <option value="trial">Trial</option>
+          <option value="active">Active</option>
+          <option value="past_due">Past due</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={form.adminAccessEnabled} onChange={(event) => setForm({ ...form, adminAccessEnabled: event.target.checked })} />
+        Admin access enabled
+      </label>
+      <label className="block text-sm">{store ? "New password" : "Studio password"}<input type="password" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
+      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">{store ? "Save store" : "Register store"}</button>
+      <Notice message={message} />
+    </form>
+  );
+}
+
+function StoreForm({ data, allowPassword }: { data: StorefrontPayload; allowPassword: boolean }) {
   const router = useRouter();
   const [form, setForm] = useState({
     companyName: data.settings.companyName,
     logo: data.settings.logo,
+    description: data.settings.description,
+    socialUrl: data.settings.socialUrl,
     announcement: data.settings.announcement,
     pickupAddress: data.settings.pickupAddress,
     deliveryFeeKes: String(data.settings.deliveryFeeCents / 100),
     freeDeliveryThresholdKes: String(data.settings.freeDeliveryThresholdCents / 100),
+    password: "",
   });
   const [message, setMessage] = useState<string | null>(null);
   return (
@@ -91,9 +244,11 @@ function StoreForm({ data }: { data: StorefrontPayload }) {
       onSubmit={async (event) => {
         event.preventDefault();
         const result = await saveSettingsAction({
+          storeId: data.storeId,
           ...form,
           deliveryFeeKes: Number(form.deliveryFeeKes),
           freeDeliveryThresholdKes: Number(form.freeDeliveryThresholdKes),
+          password: allowPassword ? form.password : "",
         });
         setMessage(savedNote(result));
         router.refresh();
@@ -102,37 +257,55 @@ function StoreForm({ data }: { data: StorefrontPayload }) {
       <h2 className="text-lg font-medium">Store</h2>
       <label className="block text-sm">Company name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })} /></label>
       <ImageField label="Logo" value={form.logo} onChange={(logo) => setForm({ ...form, logo })} />
+      <label className="block text-sm">Description<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+      <label className="block text-sm">Social page<span className="mt-1 block text-xs font-normal text-muted">The shop name in the copyright links here.</span><input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.socialUrl} onChange={(event) => setForm({ ...form, socialUrl: event.target.value })} placeholder="https://instagram.com/yourshop" /></label>
       <label className="block text-md">Announcement<span className="mt-1 block text-xs font-normal text-muted">One announcement per line. They take turns in the bar.</span><textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={4} value={form.announcement} onChange={(event) => setForm({ ...form, announcement: event.target.value })} /></label>
       <label className="block text-sm">Pickup address<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.pickupAddress} onChange={(event) => setForm({ ...form, pickupAddress: event.target.value })} /></label>
       <label className="block text-sm">Delivery fee (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.deliveryFeeKes} onChange={(event) => setForm({ ...form, deliveryFeeKes: event.target.value })} /></label>
       <label className="block text-sm">Free delivery from (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.freeDeliveryThresholdKes} onChange={(event) => setForm({ ...form, freeDeliveryThresholdKes: event.target.value })} /></label>
+      {allowPassword ? <label className="block text-sm">New password<input type="password" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label> : null}
       <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save store</button>
       <Notice message={message} />
     </form>
   );
 }
 
-function HeroForms({ heroes }: { heroes: Hero[] }) {
+function HeroForms({ data }: { data: StorefrontPayload }) {
+  const groups = [
+    { key: "home", label: "Home", department: null as string | null, heroes: data.heroes.filter((hero) => !hero.department) },
+    ...data.departments.map((department) => ({
+      key: department.id,
+      label: department.name,
+      department: department.slug,
+      heroes: data.heroes.filter((hero) => hero.department === department.slug),
+    })),
+  ];
   return (
-    <div className="space-y-4">
-      {heroes.map((hero) => (
-        <HeroForm key={hero.id} hero={hero} />
+    <div className="space-y-6">
+      {groups.map((group) => (
+        <section key={group.key} className="space-y-4">
+          <h2 className="text-lg font-medium">{group.label}</h2>
+          {group.heroes.map((hero) => (
+            <HeroForm key={hero.id} hero={hero} storeId={data.storeId} />
+          ))}
+          <HeroCreate storeId={data.storeId} department={group.department} />
+        </section>
       ))}
     </div>
   );
 }
 
-function HeroForm({ hero }: { hero: Hero }) {
+function HeroForm({ hero, storeId }: { hero: Hero; storeId: string }) {
   const router = useRouter();
   const [form, setForm] = useState(hero);
   const [message, setMessage] = useState<string | null>(null);
-  const title = hero.slot === "hero3" ? `Hero 3 · ${hero.department ? departmentLabel(hero.department) : ""}` : hero.slot === "hero1" ? "Hero 1" : "Hero 2";
   return (
     <form
       className="space-y-3 min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         const result = await saveHeroAction({
+          storeId,
           id: form.id,
           eyebrow: form.eyebrow,
           headline: form.headline,
@@ -143,12 +316,50 @@ function HeroForm({ hero }: { hero: Hero }) {
         router.refresh();
       }}
     >
-      <h2 className="text-lg font-medium">{title}</h2>
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">{hero.eyebrow || "Hero"}</h3>
+        <button
+          type="button"
+          className="text-sm underline"
+          onClick={async () => {
+            await deleteHeroAction(storeId, hero.id);
+            router.refresh();
+          }}
+        >
+          Delete
+        </button>
+      </div>
       <label className="block text-sm">Eyebrow<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.eyebrow} onChange={(event) => setForm({ ...form, eyebrow: event.target.value })} /></label>
       <label className="block text-sm">Headline<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.headline} onChange={(event) => setForm({ ...form, headline: event.target.value })} /></label>
       <label className="block text-sm">Button<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.buttonLabel} onChange={(event) => setForm({ ...form, buttonLabel: event.target.value })} /></label>
       <ImageField label="Background image" value={form.image} onChange={(image) => setForm({ ...form, image })} />
       <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save hero</button>
+      <Notice message={message} />
+    </form>
+  );
+}
+
+function HeroCreate({ storeId, department }: { storeId: string; department: string | null }) {
+  const router = useRouter();
+  const [form, setForm] = useState({ eyebrow: "", headline: "", image: "", buttonLabel: "Shop" });
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <form
+      className="space-y-3 rounded-2xl border border-dashed border-line bg-white p-4"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const result = await addHeroAction({ storeId, department, ...form });
+        setMessage(savedNote(result));
+        if ("ok" in result) setForm({ eyebrow: "", headline: "", image: "", buttonLabel: "Shop" });
+        router.refresh();
+      }}
+    >
+      <h3 className="font-medium">Add hero</h3>
+      <label className="block text-sm">Eyebrow<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.eyebrow} onChange={(event) => setForm({ ...form, eyebrow: event.target.value })} /></label>
+      <label className="block text-sm">Headline<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.headline} onChange={(event) => setForm({ ...form, headline: event.target.value })} /></label>
+      <label className="block text-sm">Button<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.buttonLabel} onChange={(event) => setForm({ ...form, buttonLabel: event.target.value })} /></label>
+      <ImageField label="Background image" value={form.image} onChange={(image) => setForm({ ...form, image })} />
+      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Add hero</button>
       <Notice message={message} />
     </form>
   );
@@ -174,7 +385,7 @@ function Highlights({ data }: { data: StorefrontPayload }) {
                 const ids = items.map((entry) => entry.id);
                 const swapped = [...ids];
                 [swapped[index - 1], swapped[index]] = [swapped[index], swapped[index - 1]];
-                await moveHighlightAction(swapped);
+                await moveHighlightAction(data.storeId, swapped);
                 router.refresh();
               }}
             >
@@ -184,7 +395,7 @@ function Highlights({ data }: { data: StorefrontPayload }) {
               type="button"
               className="text-sm underline"
               onClick={async () => {
-                await deleteHighlightAction(item.id);
+                await deleteHighlightAction(data.storeId, item.id);
                 router.refresh();
               }}
             >
@@ -198,7 +409,7 @@ function Highlights({ data }: { data: StorefrontPayload }) {
         type="button"
         className="rounded-full bg-ink px-5 py-2 text-sm text-white"
         onClick={async () => {
-          const result = await addHighlightAction(image);
+          const result = await addHighlightAction(data.storeId, image);
           setMessage(result.error ?? "Added");
           if ("ok" in result) setImage("");
           router.refresh();
@@ -211,42 +422,142 @@ function Highlights({ data }: { data: StorefrontPayload }) {
   );
 }
 
+function moveIds(ids: string[], index: number, direction: -1 | 1) {
+  const next = index + direction;
+  if (next < 0 || next >= ids.length) return null;
+  const swapped = [...ids];
+  [swapped[index], swapped[next]] = [swapped[next], swapped[index]];
+  return swapped;
+}
+
 function Categories({ data }: { data: StorefrontPayload }) {
   const router = useRouter();
-  const [department, setDepartment] = useState<Department>("new");
+  const [department, setDepartment] = useState<Department>(data.departments[0]?.slug ?? "");
   const [name, setName] = useState("");
+  const [mainName, setMainName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const atCap = data.departments.length >= MAX_DEPARTMENTS;
+  const departmentIds = data.departments.map((entry) => entry.id);
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
-      <h2 className="text-lg font-medium">Categories</h2>
-      {DEPARTMENTS.map((entry) => (
-        <div key={entry} className="mt-4">
-          <h3 className="font-medium">{departmentLabel(entry)}</h3>
+      <h2 className="text-lg font-medium">Main categories</h2>
+      <p className="mt-1 text-sm text-muted">{data.departments.length} of {MAX_DEPARTMENTS}. Up and Down set the order on the shop. The shop only shows a category that has products.</p>
+      {data.departments.map((entry, index) => {
+        const subs = data.categories.filter((category) => category.department === entry.slug);
+        const subIds = subs.map((category) => category.id);
+        return (
+        <div key={entry.id} className="mt-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-medium">{entry.name}</h3>
+            <div className="flex shrink-0 gap-3">
+              <button
+                type="button"
+                className="text-sm underline disabled:opacity-40"
+                disabled={index === 0}
+                onClick={async () => {
+                  const ids = moveIds(departmentIds, index, -1);
+                  if (!ids) return;
+                  await moveDepartmentAction(data.storeId, ids);
+                  router.refresh();
+                }}
+              >
+                Up
+              </button>
+              <button
+                type="button"
+                className="text-sm underline disabled:opacity-40"
+                disabled={index === data.departments.length - 1}
+                onClick={async () => {
+                  const ids = moveIds(departmentIds, index, 1);
+                  if (!ids) return;
+                  await moveDepartmentAction(data.storeId, ids);
+                  router.refresh();
+                }}
+              >
+                Down
+              </button>
+              <button
+                type="button"
+                className="text-sm underline"
+                onClick={async () => {
+                  const result = await deleteDepartmentAction(data.storeId, entry.id);
+                  setMessage("error" in result ? result.error : "Deleted");
+                  router.refresh();
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
           <ul className="mt-2 space-y-2 text-sm">
-            {data.categories
-              .filter((category) => category.department === entry)
-              .map((category) => (
-                <li key={category.id} className="flex items-center justify-between border-b border-line py-2">
+            {subs.map((category, subIndex) => (
+                <li key={category.id} className="flex items-center justify-between gap-3 border-b border-line py-2">
                   {category.name}
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={async () => {
-                      await deleteCategoryAction(category.id);
-                      router.refresh();
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <div className="flex shrink-0 gap-3">
+                    <button
+                      type="button"
+                      className="underline disabled:opacity-40"
+                      disabled={subIndex === 0}
+                      onClick={async () => {
+                        const ids = moveIds(subIds, subIndex, -1);
+                        if (!ids) return;
+                        await moveCategoryAction(data.storeId, ids);
+                        router.refresh();
+                      }}
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      className="underline disabled:opacity-40"
+                      disabled={subIndex === subs.length - 1}
+                      onClick={async () => {
+                        const ids = moveIds(subIds, subIndex, 1);
+                        if (!ids) return;
+                        await moveCategoryAction(data.storeId, ids);
+                        router.refresh();
+                      }}
+                    >
+                      Down
+                    </button>
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={async () => {
+                        await deleteCategoryAction(data.storeId, category.id);
+                        router.refresh();
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </li>
               ))}
           </ul>
         </div>
-      ))}
+        );
+      })}
+      <div className="mt-4 flex gap-2">
+        <input className="min-w-0 flex-1 rounded-lg border border-line px-3 py-2" value={mainName} onChange={(event) => setMainName(event.target.value)} placeholder="Main category name" disabled={atCap} />
+        <button
+          type="button"
+          disabled={atCap}
+          className="rounded-full bg-ink px-4 py-2 text-sm text-white disabled:opacity-40"
+          onClick={async () => {
+            const result = await addDepartmentAction({ storeId: data.storeId, name: mainName });
+            setMessage("error" in result ? result.error : "Added");
+            if ("ok" in result) setMainName("");
+            router.refresh();
+          }}
+        >
+          Add main category
+        </button>
+      </div>
+      <h2 className="mt-8 text-lg font-medium">Subcategories</h2>
       <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-        <select className="rounded-lg border border-line px-3 py-2" value={department} onChange={(event) => setDepartment(event.target.value as Department)}>
-          {DEPARTMENTS.map((entry) => (
-            <option key={entry} value={entry}>{departmentLabel(entry)}</option>
+        <select className="rounded-lg border border-line px-3 py-2" value={department} onChange={(event) => setDepartment(event.target.value)}>
+          {data.departments.map((entry) => (
+            <option key={entry.id} value={entry.slug}>{entry.name}</option>
           ))}
         </select>
         <input className="rounded-lg border border-line px-3 py-2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Category name" />
@@ -254,8 +565,8 @@ function Categories({ data }: { data: StorefrontPayload }) {
           type="button"
           className="rounded-full bg-ink px-4 py-2 text-sm text-white"
           onClick={async () => {
-            const result = await addCategoryAction({ name, department });
-            setMessage(result.error ?? "Added");
+            const result = await addCategoryAction({ storeId: data.storeId, name, department });
+            setMessage("error" in result ? result.error : "Added");
             if ("ok" in result) setName("");
             router.refresh();
           }}
@@ -268,7 +579,9 @@ function Categories({ data }: { data: StorefrontPayload }) {
   );
 }
 
-function blankProduct(): ProductDraft {
+function blankProduct(data: StorefrontPayload): ProductDraft {
+  const department = data.departments[0]?.slug ?? "";
+  const category = data.categories.find((item) => item.department === department)?.name ?? "";
   return {
     name: "",
     subtitle: "",
@@ -281,7 +594,7 @@ function blankProduct(): ProductDraft {
     gender: "unisex",
     kids: false,
     active: true,
-    departments: [{ department: "new", category: "Shoes" }],
+    departments: [{ department, category }],
     colors: [{ name: "Black", hex: "#111111" }],
     sizes: [{ label: "M" }],
     stock: [{ colorName: "Black", sizeLabel: "M", quantity: 4 }],
@@ -340,12 +653,12 @@ function Products({ data }: { data: StorefrontPayload }) {
   const [editing, setEditing] = useState<ProductDraft | null>(null);
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [visibilityError, setVisibilityError] = useState<string | null>(null);
-  if (editing) return <ProductForm initial={editing} onDone={() => setEditing(null)} />;
+  if (editing) return <ProductForm data={data} initial={editing} onDone={() => setEditing(null)} />;
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Products</h2>
-        <button type="button" className="rounded-full bg-ink px-4 py-2 text-sm text-white" onClick={() => setEditing(blankProduct())}>
+        <button type="button" className="rounded-full bg-ink px-4 py-2 text-sm text-white" onClick={() => setEditing(blankProduct(data))}>
           New product
         </button>
       </div>
@@ -364,7 +677,7 @@ function Products({ data }: { data: StorefrontPayload }) {
                       const active = event.target.checked;
                       setVisibility((current) => ({ ...current, [product.id]: active }));
                       setVisibilityError(null);
-                      const result = await setProductActiveAction(product.id, active);
+                      const result = await setProductActiveAction(data.storeId, product.id, active);
                       if ("error" in result && result.error) {
                         setVisibility((current) => ({ ...current, [product.id]: !active }));
                         setVisibilityError(result.error);
@@ -384,7 +697,7 @@ function Products({ data }: { data: StorefrontPayload }) {
                   className="underline"
                   onClick={async () => {
                     if (!window.confirm(`Delete ${product.name}?`)) return;
-                    await deleteProductAction(product.id);
+                    await deleteProductAction(data.storeId, product.id);
                     router.refresh();
                   }}
                 >
@@ -412,6 +725,11 @@ function toImageGroups(images: ProductDraft["images"]): ImageGroup[] {
   return groups.length > 0 ? groups : [{ colorName: "", alt: "", links: [""] }];
 }
 
+function photosForColor(groups: ImageGroup[], colorName: string) {
+  const key = colorName.trim().toLowerCase();
+  return groups.reduce((count, group) => count + (group.colorName.trim().toLowerCase() === key ? group.links.length : 0), 0);
+}
+
 function imagesFromGroups(groups: ImageGroup[]) {
   const rows = groups.flatMap((group) =>
     group.links
@@ -422,10 +740,12 @@ function imagesFromGroups(groups: ImageGroup[]) {
   return rows.length > 0 ? rows : [{ image: "", alt: "", colorName: null }];
 }
 
-function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () => void }) {
+function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initial: ProductDraft; onDone: () => void }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
-  const [imageGroups, setImageGroups] = useState(() => toImageGroups(initial.images));
+  const [imageGroups, setImageGroups] = useState(() =>
+    toImageGroups(initial.images).map((group) => ({ ...group, alt: group.alt.trim() || initial.name })),
+  );
   const [message, setMessage] = useState<string | null>(null);
 
   function patchList<T>(key: "departments" | "colors" | "sizes" | "images", index: number, patch: Partial<T>) {
@@ -441,7 +761,7 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
       className="space-y-3 min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5"
       onSubmit={async (event) => {
         event.preventDefault();
-        const result = await saveProductAction({
+        const result = await saveProductAction(data.storeId, {
           id: form.id,
           name: form.name,
           subtitle: form.subtitle,
@@ -469,7 +789,12 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
     >
       <button type="button" className="text-sm underline" onClick={onDone}>Back to products</button>
       <h2 className="text-lg font-medium">{form.id ? "Edit product" : "New product"}</h2>
-      <label className="block text-sm">Name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+      <label className="block text-sm">Name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.name} onChange={(event) => {
+        const name = event.target.value;
+        const previous = form.name;
+        setForm({ ...form, name });
+        setImageGroups((current) => current.map((group) => (group.alt.trim() === "" || group.alt === previous ? { ...group, alt: name } : group)));
+      }} /></label>
       <label className="block text-sm">Subtitle<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></label>
       <label className="block text-sm">Price in KES<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.priceKes} onChange={(event) => setForm({ ...form, priceKes: event.target.value })} /></label>
       <label className="block text-sm">Compare-at price in KES<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.compareAtKes} onChange={(event) => setForm({ ...form, compareAtKes: event.target.value })} /></label>
@@ -492,22 +817,39 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
 
       <div>
         <p className="text-sm font-medium">Departments</p>
-        {form.departments.map((entry, index) => (
-          <div key={`${entry.department}-${index}`} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <select className="rounded-lg border border-line px-2 py-2 text-sm" value={entry.department} onChange={(event) => patchList("departments", index, { department: event.target.value as Department })}>
-              {DEPARTMENTS.map((department) => <option key={department} value={department}>{departmentLabel(department)}</option>)}
+        {form.departments.map((entry, index) => {
+          const choices = data.categories.filter((category) => category.department === entry.department);
+          const known = choices.some((category) => category.name === entry.category);
+          return (
+          <div key={`department-${index}`} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <select className="rounded-lg border border-line px-2 py-2 text-sm" value={entry.department} onChange={(event) => {
+              const department = event.target.value as Department;
+              const matches = data.categories.filter((item) => item.department === department);
+              const category = matches.some((item) => item.name === entry.category) ? entry.category : matches[0]?.name ?? "";
+              patchList("departments", index, { department, category });
+            }}>
+              {data.departments.map((department) => <option key={department.id} value={department.slug}>{departmentLabel(department.slug, data.departments)}</option>)}
             </select>
-            <input className="rounded-lg border border-line px-2 py-2 text-sm" value={entry.category} onChange={(event) => patchList("departments", index, { category: event.target.value })} />
+            <select className="rounded-lg border border-line px-2 py-2 text-sm" value={entry.category} onChange={(event) => patchList("departments", index, { category: event.target.value })}>
+              {choices.length === 0 && !entry.category ? <option value="">No categories yet</option> : null}
+              {choices.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+              {entry.category && !known ? <option value={entry.category}>{entry.category}</option> : null}
+            </select>
             <button type="button" className="text-sm underline" onClick={() => setForm({ ...form, departments: form.departments.filter((_, item) => item !== index) })}>Remove</button>
           </div>
-        ))}
-        <button type="button" className="mt-2 text-sm underline" onClick={() => setForm({ ...form, departments: [...form.departments, { department: "men", category: "Shoes" }] })}>Add department</button>
+          );
+        })}
+        <button type="button" className="mt-2 text-sm underline" onClick={() => {
+          const department = data.departments[0]?.slug ?? "";
+          const category = data.categories.find((item) => item.department === department)?.name ?? "";
+          setForm({ ...form, departments: [...form.departments, { department, category }] });
+        }}>Add department</button>
       </div>
 
       <div>
         <p className="text-sm font-medium">Colours</p>
         {form.colors.map((color, index) => (
-          <div key={`${color.name}-${index}`} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+          <div key={`color-${index}`} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
             <input className="rounded-lg border border-line px-2 py-2 text-sm" value={color.name} onChange={(event) => patchList("colors", index, { name: event.target.value })} />
             <input className="rounded-lg border border-line px-2 py-2 text-sm" value={color.hex} onChange={(event) => patchList("colors", index, { hex: event.target.value })} />
             <button type="button" className="text-sm underline" onClick={() => setForm({ ...form, colors: form.colors.filter((_, item) => item !== index) })}>Remove</button>
@@ -519,7 +861,7 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
       <div>
         <p className="text-sm font-medium">Sizes</p>
         {form.sizes.map((size, index) => (
-          <div key={`${size.label}-${index}`} className="mt-2 flex flex-wrap items-center gap-2">
+          <div key={`size-${index}`} className="mt-2 flex flex-wrap items-center gap-2">
             <input className="flex-1 rounded-lg border border-line px-2 py-2 text-sm" value={size.label} onChange={(event) => patchList("sizes", index, { label: event.target.value })} />
             <button type="button" className="text-sm underline" onClick={() => setForm({ ...form, sizes: form.sizes.filter((_, item) => item !== index) })}>Remove</button>
           </div>
@@ -554,8 +896,10 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
 
       <div className="space-y-3">
         <p className="text-sm font-medium">Images</p>
-        <p className="text-xs text-muted">One colour and alt text can have several image links.</p>
-        {imageGroups.map((group, index) => (
+        <p className="text-xs text-muted">Each colour can have up to {MAX_PRODUCT_IMAGES} photos.</p>
+        {imageGroups.map((group, index) => {
+          const colorFull = photosForColor(imageGroups, group.colorName) >= MAX_PRODUCT_IMAGES;
+          return (
           <div key={`image-group-${index}`} className="space-y-2 rounded-xl border border-line p-3">
             <input
               className="w-full rounded-lg border border-line px-2 py-2 text-sm"
@@ -608,10 +952,14 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
             <div className="flex flex-wrap gap-4">
               <button
                 type="button"
-                className="text-sm underline"
+                className="text-sm underline disabled:opacity-40"
+                disabled={colorFull}
                 onClick={() => {
                   setImageGroups((current) =>
-                    current.map((entry, item) => (item === index ? { ...entry, links: [...entry.links, ""] } : entry)),
+                    current.map((entry, item) => {
+                      if (item !== index || photosForColor(current, entry.colorName) >= MAX_PRODUCT_IMAGES) return entry;
+                      return { ...entry, links: [...entry.links, ""] };
+                    }),
                   );
                 }}
               >
@@ -626,11 +974,14 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
         <button
           type="button"
           className="text-sm underline"
-          onClick={() => setImageGroups((current) => [...current, { colorName: "", alt: "", links: [""] }])}
+          onClick={() => {
+            setImageGroups((current) => [...current, { colorName: "", alt: form.name, links: [""] }]);
+          }}
         >
           Add image
         </button>
@@ -645,7 +996,7 @@ function ProductForm({ initial, onDone }: { initial: ProductDraft; onDone: () =>
             onClick={async () => {
               if (!form.id) return;
               if (!window.confirm("Delete this product?")) return;
-              await deleteProductAction(form.id);
+              await deleteProductAction(data.storeId, form.id);
               router.refresh();
               onDone();
             }}

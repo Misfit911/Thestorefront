@@ -1,5 +1,4 @@
-export const DEPARTMENTS = ["new", "men", "women", "kids", "sport"] as const;
-export type Department = (typeof DEPARTMENTS)[number];
+export type Department = string;
 
 export const GENDERS = ["men", "women", "unisex"] as const;
 export type Gender = (typeof GENDERS)[number];
@@ -10,16 +9,29 @@ export type KidsChoice = "kids" | "adult";
 export type StoreSettings = {
   companyName: string;
   logo: string;
+  description: string;
+  socialUrl: string;
   announcement: string;
   pickupAddress: string;
   deliveryFeeCents: number;
   freeDeliveryThresholdCents: number;
+  slug: string;
+  subscriptionStatus: string;
+  adminAccessEnabled: boolean;
+};
+
+export type MainCategory = {
+  id: string;
+  slug: string;
+  name: string;
+  sort: number;
 };
 
 export type Hero = {
   id: string;
-  slot: "hero1" | "hero2" | "hero3";
-  department: Department | null;
+  slot: string;
+  department: string | null;
+  sort: number;
   eyebrow: string;
   headline: string;
   image: string;
@@ -55,7 +67,9 @@ export type Product = {
 };
 
 export type StorefrontPayload = {
+  storeId: string;
   settings: StoreSettings;
+  departments: MainCategory[];
   heroes: Hero[];
   highlights: Highlight[];
   categories: Category[];
@@ -133,36 +147,10 @@ export const emptyFilters: FilterState = {
   colors: [],
 };
 
-export function isDepartment(value: string): value is Department {
-  return (DEPARTMENTS as readonly string[]).includes(value);
+export function departmentLabel(department: string, departments: { slug: string; name: string }[] = []) {
+  return departments.find((item) => item.slug === department)?.name ?? department;
 }
 
-export function departmentHeading(department: Department) {
-  switch (department) {
-    case "new":
-      return "New Nike Gear";
-    case "men":
-      return "Men's Nike Gear";
-    case "women":
-      return "Women's Nike Gear";
-    case "kids":
-      return "Kids' Nike Gear";
-    case "sport":
-      return "Sport Nike Gear";
-  }
-}
-
-export function departmentLabel(department: Department) {
-  switch (department) {
-    case "new":
-      return "New";
-    case "men":
-      return "Men";
-    case "women":
-      return "Women";
-    case "kids":
-      return "Kids";
-    case "sport":
-      return "Sport";
-  }
+export function departmentHeading(department: string, departments: { slug: string; name: string }[] = []) {
+  return departmentLabel(department, departments);
 }

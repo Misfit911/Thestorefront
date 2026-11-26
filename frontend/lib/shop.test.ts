@@ -5,7 +5,9 @@ import { nextStatuses } from "./order-status";
 import { decideMpesa, decideStripe, readPaymentReadiness } from "./reconcile";
 import { isMembersOnly, unitPriceCents } from "./pricing";
 import { sortSizes } from "./sizes";
+import { hasDepartmentRoom, MAX_DEPARTMENTS, MAX_PRODUCT_IMAGES } from "./stores";
 import { applyReservation, mergeDemand, selectionQuantity, stockCombinations, variantQuantity } from "./stock";
+import { productInputSchema } from "./validators";
 
 test("members pay the set price and guests pay compare-at only on members-only products", () => {
   const deal = { membersOnly: true, priceCents: 1000, compareAtPriceCents: 1500 };
@@ -71,6 +73,9 @@ test("reservation refuses a quantity the shelf does not have", () => {
 });
 
 test("paid orders move through pickup or delivery, then can be cancelled", () => {
+  assert.deepEqual(nextStatuses("placed", "pickup"), ["received", "cancelled"]);
+  assert.deepEqual(nextStatuses("placed", "delivery"), ["received", "cancelled"]);
+  assert.deepEqual(nextStatuses("received", "pickup"), ["packing", "cancelled"]);
   assert.deepEqual(nextStatuses("paid", "pickup"), ["packing", "cancelled"]);
   assert.deepEqual(nextStatuses("packing", "pickup"), ["ready", "cancelled"]);
   assert.deepEqual(nextStatuses("packing", "delivery"), ["out_for_delivery", "cancelled"]);
@@ -135,11 +140,75 @@ test("payment readiness tells live mode from sandbox", () => {
   assert.equal(sandbox.mpesa, "missing");
 });
 
+test("a store has at most 5 main categories and a colour has at most 7 photos", () => {
+  assert.equal(MAX_DEPARTMENTS, 5);
+  assert.equal(hasDepartmentRoom(4), true);
+  assert.equal(hasDepartmentRoom(5), false);
+  const product = {
+    name: "Shoe",
+    subtitle: "Runner",
+    description: "A shoe for the road.",
+    deliveryReturns: "Returns in 30 days.",
+    priceKes: 1000,
+    compareAtKes: null,
+    membersOnly: false,
+    badge: null,
+    gender: "unisex" as const,
+    kids: false,
+    active: true,
+    departments: [{ department: "men", category: "Shoes" }],
+    colors: [{ name: "Black", hex: "#111111" }],
+    sizes: [{ label: "M" }],
+    stock: [{ colorName: "Black", sizeLabel: "M", quantity: 1 }],
+  };
+  const photos = (count: number, colorName: string) => Array.from({ length: count }, () => ({ image: "/a.jpg", alt: "", colorName }));
+  assert.equal(productInputSchema.safeParse({ ...product, images: photos(MAX_PRODUCT_IMAGES, "Black") }).success, true);
+  assert.equal(productInputSchema.safeParse({ ...product, images: photos(MAX_PRODUCT_IMAGES + 1, "Black") }).success, false);
+  const twoColours = {
+    ...product,
+    colors: [
+      { name: "Black", hex: "#111111" },
+      { name: "White", hex: "#ffffff" },
+    ],
+    stock: [
+      { colorName: "Black", sizeLabel: "M", quantity: 1 },
+      { colorName: "White", sizeLabel: "M", quantity: 1 },
+    ],
+    images: [...photos(MAX_PRODUCT_IMAGES, "Black"), ...photos(MAX_PRODUCT_IMAGES, "White")],
+  };
+  assert.equal(productInputSchema.safeParse(twoColours).success, true);
+});
+
+test("help answers use the live delivery fee, pickup, and refund window", async () => {
+  const { helpGuide } = await import("./help");
+  const guide = helpGuide({
+    companyName: "Nike Nairobi",
+    logo: "/nike_logo.jpg",
+    description: "Nike store in Nairobi.",
+    socialUrl: "",
+    announcement: "",
+    pickupAddress: "Nike Nairobi, Westlands",
+    deliveryFeeCents: 45000,
+    freeDeliveryThresholdCents: 1_500_000,
+    slug: "nike",
+    subscriptionStatus: "active",
+    adminAccessEnabled: true,
+  });
+  assert.match(guide.welcome, /Welcome to Nike Nairobi/);
+  const joined = guide.items.map((item) => `${item.question} ${item.answer}`).join("\n");
+  assert.match(joined, /KES 450/);
+  assert.match(joined, /KES 15,000/);
+  assert.match(joined, /Westlands/);
+  assert.match(joined, /30 days/);
+  assert.match(joined, /5 business days/);
+  assert.match(joined, /M-Pesa/);
+});
+
 test("member welcome and order emails use the right copy", async () => {
   const { welcomeEmail, orderReceiptEmail, orderStatusEmail } = await import("./email-templates");
   const welcome = welcomeEmail({ to: "member@example.com", fullName: "Ada Khan" });
-  assert.match(welcome.subject, /Nike Member/i);
-  assert.match(welcome.html, /You're a Nike Member/);
+  assert.match(welcome.subject, /Nike Community/i);
+  assert.match(welcome.html, /now a Nike Member/);
   const receipt = orderReceiptEmail({
     orderId: "1",
     orderNumber: "ND-1001",
@@ -164,6 +233,14 @@ test("member welcome and order emails use the right copy", async () => {
   assert.match(receipt.subject, /ND-1001/);
   assert.match(receipt.html, /Air Force 1/);
   assert.match(receipt.html, /KES 1,000/);
+  const received = orderStatusEmail({
+    fullName: "Ada Khan",
+    orderNumber: "ND-1001",
+    status: "received",
+    totalCents: 100000,
+  });
+  assert.match(received.subject, /received your order ND-1001/i);
+  assert.match(received.text, /received your order/i);
   const cancelled = orderStatusEmail({
     fullName: "Ada Khan",
     orderNumber: "ND-1001",
@@ -174,4 +251,16 @@ test("member welcome and order emails use the right copy", async () => {
   assert.match(cancelled.text, /5 business days/);
   assert.match(cancelled.html, /5 business days/);
   assert.match(cancelled.html, /KES 1,000/);
+});
+
+test("a favicon is cropped to a circle", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const sharp = (await import("sharp")).default;
+  const { circularPng } = await import("./circular-favicon");
+  const png = await circularPng(await readFile(new URL("../public/nike_logo.jpg", import.meta.url)));
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const alpha = (x: number, y: number) => data[(y * info.width + x) * info.channels + (info.channels - 1)] ?? 0;
+  assert.equal(alpha(0, 0), 0);
+  assert.equal(alpha(info.width - 1, info.height - 1), 0);
+  assert.ok(alpha(Math.floor(info.width / 2), Math.floor(info.height / 2)) > 200);
 });

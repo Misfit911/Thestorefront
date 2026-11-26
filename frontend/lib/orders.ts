@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/index";
-import { orderItems, orders, products, productColors, productImages, productSizes, storeSettings } from "@/lib/db/schema";
+import { orderItems, orders, products, productColors, productImages, productSizes, stores } from "@/lib/db/schema";
 import { releaseStock, takeStock } from "@/lib/inventory";
-import { sendOrderReceipt, sendOrderStatusEmail } from "@/lib/email";
+import { sendOrderReceipt, sendOrderStatusEmail, sendPlacedOrderNotification } from "@/lib/email";
 import { deliveryFeeFor, shillingsFromCents } from "@/lib/money";
 import { unitPriceCents } from "@/lib/pricing";
 import { mpesaOutcome, stkQuery } from "@/lib/mpesa";
@@ -10,6 +10,7 @@ import { nextStatuses } from "@/lib/order-status";
 import { normalizeKePhone } from "@/lib/phone";
 import { decideMpesa, decideStripe, type StripeView } from "@/lib/reconcile";
 import { getStripe } from "@/lib/stripe";
+import { isPublicSubscription } from "@/lib/stores";
 import type { CheckoutInput } from "@/lib/validators";
 import type { OrderReceipt } from "@/lib/types";
 
@@ -28,18 +29,18 @@ function orderNumber() {
   return `NN-${ymd}-${suffix}`;
 }
 
-async function settingsRow() {
-  const [row] = await db.select().from(storeSettings).limit(1);
-  if (!row) throw new OrderError("The store is not ready for checkout", 503);
+async function settingsRow(slug: string) {
+  const [row] = await db.select().from(stores).where(eq(stores.slug, slug)).limit(1);
+  if (!row || !isPublicSubscription(row.subscriptionStatus)) throw new OrderError("The store is not ready for checkout", 503);
   return row;
 }
 
 export async function priceCheckout(input: CheckoutInput, member = false) {
-  const settings = await settingsRow();
+  const settings = await settingsRow(input.storeSlug);
   const lines = [];
   for (const item of input.items) {
     const [product] = await db.select().from(products).where(eq(products.id, item.productId));
-    if (!product || !product.active) throw new OrderError("A product in your bag is no longer available");
+    if (!product || !product.active || product.storeId !== settings.id) throw new OrderError("A product in your bag is no longer available");
     const sizes = await db.select().from(productSizes).where(eq(productSizes.productId, product.id));
     const colors = await db.select().from(productColors).where(eq(productColors.productId, product.id));
     if (sizes.length > 0) {
@@ -93,6 +94,7 @@ export async function createPendingOrder(input: CheckoutInput, paymentMethod: "c
     if (!reserved.ok) throw new OrderError(reserved.message);
     await tx.insert(orders).values({
       id,
+      storeId: priced.settings.id,
       orderNumber: number,
       status: "pending",
       paymentMethod,
@@ -126,6 +128,73 @@ export async function createPendingOrder(input: CheckoutInput, paymentMethod: "c
   });
   const order = await getOrder(id);
   if (!order) throw new OrderError("The order could not be created", 500);
+  return order;
+}
+
+export async function createPlacedOrder(input: CheckoutInput, member = false) {
+  const priced = await priceCheckout(input, member);
+  const id = crypto.randomUUID();
+  const number = orderNumber();
+  await db.transaction(async (tx) => {
+    const reserved = await takeStock(
+      tx,
+      priced.lines.map((line) => ({
+        productId: line.productId,
+        name: line.name,
+        color: line.color,
+        size: line.size,
+        quantity: line.quantity,
+      })),
+    );
+    if (!reserved.ok) throw new OrderError(reserved.message);
+    await tx.insert(orders).values({
+      id,
+      storeId: priced.settings.id,
+      orderNumber: number,
+      status: "placed",
+      paymentMethod: "unpaid",
+      fullName: input.fullName,
+      email: input.email.toLowerCase(),
+      phone: priced.phone,
+      fulfillment: input.fulfillment,
+      area: input.fulfillment === "delivery" ? input.area : null,
+      street: input.fulfillment === "delivery" ? input.street : null,
+      note: input.note || null,
+      pickupAddress: priced.settings.pickupAddress,
+      subtotalCents: priced.subtotalCents,
+      deliveryFeeCents: priced.deliveryFeeCents,
+      totalCents: priced.totalCents,
+      inventoryHeld: true,
+    });
+    await tx.insert(orderItems).values(
+      priced.lines.map((line) => ({
+        id: crypto.randomUUID(),
+        orderId: id,
+        productId: line.productId,
+        name: line.name,
+        subtitle: line.subtitle,
+        size: line.size,
+        color: line.color,
+        unitPriceCents: line.unitPriceCents,
+        quantity: line.quantity,
+        image: line.image,
+      })),
+    );
+  });
+  const order = await getOrder(id);
+  if (!order) throw new OrderError("The order could not be created", 500);
+  try {
+    const receipt = await toReceipt(id);
+    if (receipt) {
+      await sendPlacedOrderNotification({
+        storeName: priced.settings.companyName,
+        pickupAddress: priced.settings.pickupAddress,
+        receipt,
+      });
+    }
+  } catch (error) {
+    console.error("Order notification failed", error);
+  }
   return order;
 }
 

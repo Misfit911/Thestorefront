@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/components/storefront/context";
 
 export function MemberDialog() {
-  const { accountOpen, closeAccount, member, setMember } = useStore();
+  const { accountOpen, closeAccount, member, setMember, data } = useStore();
   const [mode, setMode] = useState<"signup" | "login">("signup");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,8 +33,8 @@ export function MemberDialog() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           mode === "signup"
-            ? { fullName, email, password, remember }
-            : { email, password, remember },
+            ? { storeSlug: data.settings.slug, fullName, email, password, remember }
+            : { storeSlug: data.settings.slug, email, password, remember },
         ),
       });
       const json = (await response.json()) as { error?: string; member?: { fullName: string; email: string } };
@@ -55,7 +55,11 @@ export function MemberDialog() {
     setBusy(true);
     setError(null);
     try {
-      await fetch("/api/members/logout", { method: "POST" });
+      await fetch("/api/members/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeSlug: data.settings.slug }),
+      });
       setMember(null);
       setMode("login");
       setPassword("");
@@ -69,9 +73,9 @@ export function MemberDialog() {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <button type="button" aria-label="Close" className="absolute inset-0 bg-black/40" onClick={closeAccount} />
-      <div role="dialog" aria-modal="true" aria-label={member ? "Account" : mode === "signup" ? "Join Nike" : "Sign in"} className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={member ? "Account" : mode === "signup" ? "Become a Member" : "Sign in"} className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
-          <h2 className="text-2xl font-medium">{member ? "Nike Member" : mode === "signup" ? "Join Nike" : "Sign in"}</h2>
+          <h2 className="text-2xl font-medium">{member ? "Member" : mode === "signup" ? "Become a Member" : "Sign in"}</h2>
           <button type="button" onClick={closeAccount} className="text-sm underline underline-offset-4">Close</button>
         </div>
         {member ? (
@@ -142,7 +146,7 @@ export function MemberDialog() {
                 setError(null);
               }}
             >
-              {mode === "signup" ? "Already a member? Sign in" : "New here? Join Nike"}
+              {mode === "signup" ? "Already a member? Sign in" : "New here? Join Members"}
             </button>
           </form>
         )}

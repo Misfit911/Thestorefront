@@ -2,20 +2,51 @@ import { boolean, integer, pgTable, primaryKey, text, timestamp, unique } from "
 
 export { subscribers } from "@/lib/db/subscribers-table";
 
-export const storeSettings = pgTable("store_settings", {
-  id: text("id").primaryKey().default("default"),
+export const platformSettings = pgTable("platform_settings", {
+  id: text("id").primaryKey().default("platform"),
   companyName: text("company_name").notNull(),
   logo: text("logo").notNull(),
+});
+
+export const stores = pgTable("stores", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  companyName: text("company_name").notNull(),
+  logo: text("logo").notNull(),
+  description: text("description").notNull().default(""),
+  socialUrl: text("social_url").notNull().default(""),
   announcement: text("announcement").notNull(),
   pickupAddress: text("pickup_address").notNull(),
   deliveryFeeCents: integer("delivery_fee_cents").notNull(),
   freeDeliveryThresholdCents: integer("free_delivery_threshold_cents").notNull(),
+  subscriptionStatus: text("subscription_status").notNull().default("trial"),
+  adminAccessEnabled: boolean("admin_access_enabled").notNull().default(true),
+  passwordHash: text("password_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const departments = pgTable(
+  "departments",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    sort: integer("sort").notNull(),
+  },
+  (table) => [unique("departments_store_slug_unique").on(table.storeId, table.slug)],
+);
 
 export const heroes = pgTable("heroes", {
   id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
   slot: text("slot").notNull(),
   department: text("department"),
+  sort: integer("sort").notNull().default(0),
   eyebrow: text("eyebrow").notNull(),
   headline: text("headline").notNull(),
   image: text("image").notNull(),
@@ -24,12 +55,18 @@ export const heroes = pgTable("heroes", {
 
 export const highlights = pgTable("highlights", {
   id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
   image: text("image").notNull(),
   sort: integer("sort").notNull(),
 });
 
 export const categories = pgTable("categories", {
   id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   department: text("department").notNull(),
   sort: integer("sort").notNull(),
@@ -37,6 +74,9 @@ export const categories = pgTable("categories", {
 
 export const products = pgTable("products", {
   id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   subtitle: text("subtitle").notNull(),
   description: text("description").notNull(),
@@ -110,6 +150,9 @@ export const productImages = pgTable("product_images", {
 
 export const orders = pgTable("orders", {
   id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
   orderNumber: text("order_number").notNull().unique(),
   status: text("status").notNull(),
   statusDetail: text("status_detail"),
@@ -133,13 +176,20 @@ export const orders = pgTable("orders", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const members = pgTable("members", {
-  id: text("id").primaryKey(),
-  fullName: text("full_name").notNull(),
-  email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const members = pgTable(
+  "members",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    fullName: text("full_name").notNull(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("members_store_email_unique").on(table.storeId, table.email)],
+);
 
 export const orderItems = pgTable("order_items", {
   id: text("id").primaryKey(),

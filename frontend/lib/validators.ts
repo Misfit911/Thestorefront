@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { DEPARTMENTS, GENDERS } from "@/lib/types";
+import { GENDERS } from "@/lib/types";
 import { normalizeKePhone } from "@/lib/phone";
+import { isValidStoreSlug, MAX_PRODUCT_IMAGES } from "@/lib/stores";
+import { safeWebUrl } from "@/lib/web-url";
 
 export const bagLineSchema = z.object({
   productId: z.string().min(1),
@@ -11,6 +13,7 @@ export const bagLineSchema = z.object({
 
 export const checkoutSchema = z
   .object({
+    storeSlug: z.string().trim().min(2).max(40),
     items: z.array(bagLineSchema).min(1).max(30),
     fullName: z.string().trim().min(2).max(120),
     email: z.string().trim().email().max(200),
@@ -46,7 +49,7 @@ export const productInputSchema = z.object({
   departments: z
     .array(
       z.object({
-        department: z.enum(DEPARTMENTS),
+        department: z.string().trim().min(1).max(40),
         category: z.string().trim().min(1).max(80),
       }),
     )
@@ -84,6 +87,17 @@ export const productInputSchema = z.object({
     .min(1),
 })
   .superRefine((value, context) => {
+    const photosByColor = new Map<string, number>();
+    for (const image of value.images) {
+      const colorName = (image.colorName ?? "").trim().toLowerCase();
+      photosByColor.set(colorName, (photosByColor.get(colorName) ?? 0) + 1);
+    }
+    for (const count of photosByColor.values()) {
+      if (count > MAX_PRODUCT_IMAGES) {
+        context.addIssue({ code: "custom", path: ["images"], message: "A colour can have at most 7 photos" });
+        break;
+      }
+    }
     if (value.membersOnly) {
       if (value.compareAtKes == null) {
         context.addIssue({
@@ -130,6 +144,7 @@ export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type ProductInput = z.infer<typeof productInputSchema>;
 
 export const memberSignupSchema = z.object({
+  storeSlug: z.string().trim().min(2).max(40),
   fullName: z.string().trim().min(2, "Enter your full name").max(120),
   email: z.string().trim().email("Enter a valid email address").max(200),
   password: z.string().min(8, "Use at least 8 characters").max(200),
@@ -137,21 +152,82 @@ export const memberSignupSchema = z.object({
 });
 
 export const memberLoginSchema = z.object({
+  storeSlug: z.string().trim().min(2).max(40),
   email: z.string().trim().email("Enter a valid email address").max(200),
   password: z.string().min(1, "Enter your password").max(200),
   remember: z.boolean().optional().default(false),
 });
 
 export const settingsInputSchema = z.object({
+  storeId: z.string().min(1),
   companyName: z.string().trim().min(1).max(80),
   logo: z.string().trim().min(1).max(500),
+  description: z.string().trim().max(500),
+  socialUrl: z.string().trim().max(500),
   announcement: z.string().trim().min(1).max(400),
   pickupAddress: z.string().trim().min(1).max(400),
   deliveryFeeKes: z.number().min(0).max(100_000),
   freeDeliveryThresholdKes: z.number().min(0).max(10_000_000),
+  password: z.string().min(8).max(200).optional().or(z.literal("")),
+}).superRefine((value, context) => {
+  if (value.socialUrl && !safeWebUrl(value.socialUrl)) {
+    context.addIssue({ code: "custom", path: ["socialUrl"], message: "Enter a web address" });
+  }
 });
 
+export const platformInputSchema = z.object({
+  companyName: z.string().trim().min(1).max(80),
+  logo: z.string().trim().min(1).max(500),
+});
+
+const storeFields = {
+  slug: z.string().trim().min(2).max(40),
+  companyName: z.string().trim().min(1).max(80),
+  logo: z.string().trim().min(1).max(500),
+  description: z.string().trim().max(500),
+  socialUrl: z.string().trim().max(500),
+  announcement: z.string().trim().min(1).max(400),
+  pickupAddress: z.string().trim().min(1).max(400),
+  deliveryFeeKes: z.number().min(0).max(100_000),
+  freeDeliveryThresholdKes: z.number().min(0).max(10_000_000),
+  subscriptionStatus: z.enum(["trial", "active", "past_due", "cancelled"]),
+  adminAccessEnabled: z.boolean(),
+};
+
+export const storeCreateSchema = z
+  .object({
+    ...storeFields,
+    password: z.string().min(8, "Use at least 8 characters").max(200),
+  })
+  .superRefine((value, context) => {
+    if (!isValidStoreSlug(value.slug)) {
+      context.addIssue({ code: "custom", path: ["slug"], message: "Use a path of letters, numbers, hyphens, or underscores" });
+    }
+    if (value.socialUrl && !safeWebUrl(value.socialUrl)) {
+      context.addIssue({ code: "custom", path: ["socialUrl"], message: "Enter a web address" });
+    }
+  });
+
+export const storeUpdateSchema = z
+  .object({
+    id: z.string().min(1),
+    ...storeFields,
+    password: z.string().max(200).optional().or(z.literal("")),
+  })
+  .superRefine((value, context) => {
+    if (!isValidStoreSlug(value.slug)) {
+      context.addIssue({ code: "custom", path: ["slug"], message: "Use a path of letters, numbers, hyphens, or underscores" });
+    }
+    if (value.password && value.password.length < 8) {
+      context.addIssue({ code: "custom", path: ["password"], message: "Use at least 8 characters" });
+    }
+    if (value.socialUrl && !safeWebUrl(value.socialUrl)) {
+      context.addIssue({ code: "custom", path: ["socialUrl"], message: "Enter a web address" });
+    }
+  });
+
 export const heroInputSchema = z.object({
+  storeId: z.string().min(1),
   id: z.string().min(1),
   eyebrow: z.string().trim().min(1).max(120),
   headline: z.string().trim().min(1).max(200),
@@ -159,7 +235,22 @@ export const heroInputSchema = z.object({
   buttonLabel: z.string().trim().min(1).max(40),
 });
 
+export const heroCreateSchema = z.object({
+  storeId: z.string().min(1),
+  department: z.string().trim().max(40).nullable(),
+  eyebrow: z.string().trim().min(1).max(120),
+  headline: z.string().trim().min(1).max(200),
+  image: z.string().trim().min(1).max(500),
+  buttonLabel: z.string().trim().min(1).max(40),
+});
+
+export const departmentInputSchema = z.object({
+  storeId: z.string().min(1),
+  name: z.string().trim().min(1).max(40),
+});
+
 export const categoryInputSchema = z.object({
+  storeId: z.string().min(1),
   name: z.string().trim().min(1).max(80),
-  department: z.enum(DEPARTMENTS),
+  department: z.string().trim().min(1).max(40),
 });

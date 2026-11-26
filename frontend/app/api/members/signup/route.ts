@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { members } from "@/lib/db/schema";
 import { sendWelcomeEmail } from "@/lib/email";
@@ -6,6 +6,8 @@ import { jsonError } from "@/lib/http";
 import { setMemberCookie } from "@/lib/members";
 import { hashPassword } from "@/lib/passwords";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { getStoreBySlug } from "@/lib/db/queries";
+import { isPublicSubscription } from "@/lib/stores";
 import { memberSignupSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
@@ -24,7 +26,15 @@ export async function POST(request: Request) {
       return Response.json({ error: parsed.error.issues[0]?.message ?? "Check the form" }, { status: 400 });
     }
     const email = parsed.data.email.toLowerCase();
-    const [existing] = await db.select({ id: members.id }).from(members).where(eq(members.email, email)).limit(1);
+    const store = await getStoreBySlug(parsed.data.storeSlug);
+    if (!store || !isPublicSubscription(store.subscriptionStatus)) {
+      return Response.json({ error: "This store is not available" }, { status: 404 });
+    }
+    const [existing] = await db
+      .select({ id: members.id })
+      .from(members)
+      .where(and(eq(members.storeId, store.id), eq(members.email, email)))
+      .limit(1);
     if (existing) {
       return Response.json({ error: "An account with that email already exists" }, { status: 409 });
     }
@@ -32,6 +42,7 @@ export async function POST(request: Request) {
     try {
       await db.insert(members).values({
         id,
+        storeId: store.id,
         fullName: parsed.data.fullName,
         email,
         passwordHash: await hashPassword(parsed.data.password),
@@ -42,7 +53,7 @@ export async function POST(request: Request) {
       }
       throw error;
     }
-    await setMemberCookie(id, parsed.data.remember);
+    await setMemberCookie(store.slug, id, store.id, parsed.data.remember);
     await sendWelcomeEmail({ to: email, fullName: parsed.data.fullName });
     return Response.json({ member: { fullName: parsed.data.fullName, email } });
   } catch (error) {

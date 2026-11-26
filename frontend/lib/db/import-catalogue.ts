@@ -18,9 +18,9 @@ const DEMO_IDS = [
 
 async function main() {
   const { pool, db } = await import("./index");
-  const { storeSettings } = await import("./schema");
+  const { stores } = await import("./schema");
 
-  const settings = await db.select().from(storeSettings);
+  const settings = await db.select().from(stores);
   if (settings.length === 0) {
     console.warn("No store settings yet. Run npm run db:seed once so the shop can load, then run this import again.");
   }

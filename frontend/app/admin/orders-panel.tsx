@@ -37,7 +37,7 @@ function readinessLine(readiness: PaymentReadiness) {
   return `${stripe} ${webhook} ${mpesa} ${callback}`;
 }
 
-export function OrdersPanel() {
+export function OrdersPanel({ storeId = null, showStore = false }: { storeId?: string | null; showStore?: boolean }) {
   const router = useRouter();
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [readiness, setReadiness] = useState<PaymentReadiness | null>(null);
@@ -49,14 +49,14 @@ export function OrdersPanel() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const result = await listOrdersAction();
+    const result = await listOrdersAction(storeId);
     setOrders(result.orders);
     setReadiness(result.readiness);
   }
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [storeId]);
 
   const needle = search.trim().toLowerCase();
   const visible = orders.filter((order) => {
@@ -65,6 +65,7 @@ export function OrdersPanel() {
     if (!needle) return true;
     const haystack = [
       order.orderNumber,
+      showStore ? order.storeName : "",
       order.fullName,
       order.email,
       order.phone,
@@ -83,6 +84,7 @@ export function OrdersPanel() {
 
   return (
     <div className="space-y-4">
+      {storeId ? null : (
       <section className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
         <h2 className="text-lg font-medium">Payment check</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
@@ -117,7 +119,6 @@ export function OrdersPanel() {
         >
           {busy ? "Checking…" : "Reconcile payments"}
         </button>
-        {message ? <p className="mt-3 text-sm">{message}</p> : null}
         {checks && checks.length > 0 ? (
           <ul className="mt-4 space-y-2 text-sm">
             {checks.map((row) => (
@@ -129,6 +130,8 @@ export function OrdersPanel() {
           </ul>
         ) : null}
       </section>
+      )}
+      {message ? <p className="text-sm">{message}</p> : null}
 
       <section className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -176,7 +179,7 @@ export function OrdersPanel() {
           {visible.map((order) => (
             <article key={order.id} className="border-t border-line pt-4 text-sm leading-6">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-medium">{order.orderNumber}</p>
+                <p className="font-medium">{order.orderNumber}{showStore ? ` · ${order.storeName}` : ""}</p>
                 <p>{orderStatusLabel(order.status)}</p>
               </div>
               <p className="text-muted">{new Date(order.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })}</p>
@@ -201,7 +204,7 @@ export function OrdersPanel() {
                 ))}
               </ul>
               <p className="mt-2 font-medium">
-                {formatKes(order.totalCents)} · {order.paymentMethod === "mpesa" ? "M-Pesa" : "Card"}
+                {formatKes(order.totalCents)} · {order.paymentMethod === "mpesa" ? "M-Pesa" : order.paymentMethod === "card" ? "Card" : "Unpaid"}
                 {order.deliveryFeeCents > 0 ? ` · delivery ${formatKes(order.deliveryFeeCents)}` : ""}
               </p>
               {order.mpesaReceipt ? <p>M-Pesa receipt {order.mpesaReceipt}</p> : null}
@@ -220,7 +223,7 @@ export function OrdersPanel() {
                       router.refresh();
                     }}
                   >
-                    {status === "cancelled" ? "Cancel order" : `Mark ${orderStatusLabel(status).toLowerCase()}`}
+                    {status === "cancelled" ? "Cancel order" : status === "received" ? "Mark as received" : `Mark ${orderStatusLabel(status).toLowerCase()}`}
                   </button>
                 ))}
               </div>

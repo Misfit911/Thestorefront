@@ -59,8 +59,16 @@ export function Catalog() {
   const signedIn = Boolean(store.member);
   const products = applyFilters(data.products, department, filters, searchQuery, signedIn);
   const options = filterOptions(data.products, department, filters.category, signedIn);
-  const categories = data.categories.filter((category) => category.department === department);
-  const hero = data.heroes.find((item) => item.slot === "hero3" && item.department === department);
+  const categories = data.categories.filter(
+    (category) =>
+      category.department === department &&
+      data.products.some((product) =>
+        product.departments.some((entry) => entry.department === department && entry.category === category.name),
+      ),
+  );
+  const categoryHeroes = data.heroes
+    .filter((item) => item.department === department)
+    .sort((left, right) => left.sort - right.sort);
   const chips = [
     options.genders.length > 0 ? { id: "gender" as const, label: "Gender", active: filters.genders.length > 0 } : null,
     options.kids || options.adults ? { id: "kids" as const, label: "Kids", active: filters.kids.length > 0 } : null,
@@ -73,7 +81,7 @@ export function Catalog() {
   return (
     <section id="catalog" className={`px-4 pb-0 pt-6 md:px-6 ${store.searchOpen ? "scroll-mt-32" : "scroll-mt-16"}`}>
       <h2 className="text-[28px] font-medium leading-tight tracking-tight">
-        {departmentHeading(department)} ({products.length})
+        {departmentHeading(department, data.departments)} ({products.length})
       </h2>
       <div className="no-scrollbar -mx-4 mt-5 flex gap-6 overflow-x-auto px-4 text-base">
         {categories.map((category) => {
@@ -120,13 +128,8 @@ export function Catalog() {
         <p className="py-16 text-center text-sm text-muted">No products match these filters.</p>
       ) : (
         <>
-          <div className="-mx-4 mt-4 grid grid-cols-2 gap-x-1 gap-y-8 md:mx-0 md:grid-cols-3 md:gap-x-3 md:gap-y-10 lg:grid-cols-4">
-            {products.slice(0, 4).map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-          {products.length >= 4 && hero ? (
-            <div className="-mx-4 my-8 md:-mx-6 md:my-10">
+          {categoryHeroes.map((hero) => (
+            <div key={hero.id} className="-mx-4 my-8 md:-mx-6 md:my-10">
               <HeroPanel
                 image={hero.image}
                 eyebrow={hero.eyebrow}
@@ -135,14 +138,12 @@ export function Catalog() {
                 onShop={store.scrollToCatalog}
               />
             </div>
-          ) : null}
-          {products.length > 4 ? (
-            <div className="-mx-4 grid grid-cols-2 gap-x-1 gap-y-8 md:mx-0 md:grid-cols-3 md:gap-x-3 md:gap-y-10 lg:grid-cols-4">
-              {products.slice(4).map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
-          ) : null}
+          ))}
+          <div className="-mx-4 mt-4 grid grid-cols-2 gap-x-1 gap-y-8 md:mx-0 md:grid-cols-3 md:gap-x-3 md:gap-y-10 lg:grid-cols-4">
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
         </>
       )}
     </section>

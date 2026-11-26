@@ -9,11 +9,13 @@ import { bagDeliveryNote } from "@/lib/policy";
 import { unitPriceCents } from "@/lib/pricing";
 import { sortSizes } from "@/lib/sizes";
 import { selectionQuantity, variantQuantity } from "@/lib/stock";
-import { departmentLabel, DEPARTMENTS, type OrderReceipt, type Product } from "@/lib/types";
+import { shopDepartments } from "@/lib/catalog";
+import { departmentLabel, type OrderReceipt, type Product } from "@/lib/types";
 import { MediaImage } from "@/components/media-image";
 import { CheckoutSheet } from "@/components/storefront/checkout";
+import { HelpSheet } from "@/components/storefront/help";
 import { useStore, type Overlay } from "@/components/storefront/context";
-import { Footer } from "@/components/storefront/footer";
+import { CopyrightLine, Footer } from "@/components/storefront/footer";
 import { IconChevron, IconHeart } from "@/components/storefront/icons";
 import { ProductPrice } from "@/components/storefront/price";
 import { BackLink, Sheet } from "@/components/storefront/sheet";
@@ -59,9 +61,11 @@ function labelFor(overlay: Overlay) {
     case "checkout":
       return "Checkout";
     case "success":
-      return "Payment successful";
+      return "Order successful";
     case "orders":
       return "Orders";
+    case "help":
+      return "Help";
     case "favourites":
       return "Favourites";
     case "filters":
@@ -87,6 +91,8 @@ function OverlayBody({ overlay }: { overlay: Overlay }) {
       return <SuccessSheet receipt={overlay.receipt} />;
     case "orders":
       return <OrdersSheet />;
+    case "help":
+      return <HelpSheet />;
     case "favourites":
       return <FavouritesSheet />;
     case "filters":
@@ -98,7 +104,9 @@ function OverlayBody({ overlay }: { overlay: Overlay }) {
 
 function MenuSheet() {
   const { data, chooseDepartment, push, back, toggleBag, navDepartments } = useStore();
-  const drawerDepartments = DEPARTMENTS.filter((department) => !navDepartments.includes(department));
+  const drawerDepartments = shopDepartments(data)
+    .map((department) => department.slug)
+    .filter((department) => !navDepartments.includes(department));
   return (
     <div className="px-6 py-6">
       <div className="flex justify-between">
@@ -108,7 +116,7 @@ function MenuSheet() {
         <nav className="mt-8 space-y-5">
           {drawerDepartments.map((department) => (
             <button key={department} type="button" onClick={() => chooseDepartment(department)} className="flex w-full items-center justify-between text-2xl">
-              {departmentLabel(department)}
+              {departmentLabel(department, data.departments)}
               <IconChevron className="-rotate-90" />
             </button>
           ))}
@@ -117,8 +125,9 @@ function MenuSheet() {
       <div className={`${drawerDepartments.length > 0 ? "mt-10 border-t border-line pt-6" : "mt-8"} space-y-4 text-base`}>
         <button type="button" className="block" onClick={toggleBag}>Bag</button>
         <button type="button" className="block" onClick={() => push({ type: "orders" })}>Orders</button>
+        <button type="button" className="block" onClick={() => push({ type: "help" })}>Help</button>
         <button type="button" className="block" onClick={() => push({ type: "favourites" })}>Favourites</button>
-        <p className="pt-4 text-sm text-muted">© {new Date().getFullYear()} {data.settings.companyName}</p>
+        <CopyrightLine settings={data.settings} className="pt-4 text-sm text-muted" />
       </div>
     </div>
   );

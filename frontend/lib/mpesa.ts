@@ -72,7 +72,7 @@ export async function stkPush(input: { phone: string; amountShillings: number; a
       PhoneNumber: input.phone,
       CallBackURL: process.env.MPESA_CALLBACK_URL,
       AccountReference: input.accountReference.slice(0, 12),
-      TransactionDesc: "Nike Nairobi",
+      TransactionDesc: "Customs Kenya",
     }),
     cache: "no-store",
   });

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { ADMIN_COOKIE, verifySession } from "@/lib/auth";
+import { ADMIN_COOKIE, readStoreSession, STORE_ADMIN_COOKIE, verifyPlatformSession } from "@/lib/auth";
+import { getStoreById } from "@/lib/db/queries";
 import { isSafeObjectKey } from "@/lib/images";
 import { putObject, storageConfigured } from "@/lib/storage";
 
@@ -20,7 +21,11 @@ function sniff(buffer: Buffer) {
 
 export async function POST(request: Request) {
   const jar = await cookies();
-  if (!(await verifySession(jar.get(ADMIN_COOKIE)?.value))) {
+  const platform = await verifyPlatformSession(jar.get(ADMIN_COOKIE)?.value);
+  const storeSession = await readStoreSession(jar.get(STORE_ADMIN_COOKIE)?.value);
+  const store = storeSession ? await getStoreById(storeSession.storeId) : null;
+  const storeAllowed = Boolean(storeSession && store?.adminAccessEnabled && store.slug === storeSession.slug);
+  if (!platform && !storeAllowed) {
     return Response.json({ error: "Sign in to upload images" }, { status: 401 });
   }
   if (!storageConfigured()) return Response.json({ error: "Image storage is not configured" }, { status: 503 });

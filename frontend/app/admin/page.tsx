@@ -1,14 +1,25 @@
 import { Studio } from "@/app/admin/studio";
-import { getAdminCatalog } from "@/lib/db/queries";
+import { ensureLegacyStorePasswords } from "@/lib/db/mutations";
+import { getAdminCatalog, listManageStores, loadPlatformSettings } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const metadata = { title: "Studio" };
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ store?: string }> }) {
+  const query = await searchParams;
   try {
-    const data = await getAdminCatalog();
-    return <Studio data={data} />;
+    await ensureLegacyStorePasswords();
+    const [platform, stores] = await Promise.all([loadPlatformSettings(), listManageStores()]);
+    const selected = query.store ? stores.find((store) => store.slug === query.store) ?? null : null;
+    const data = selected ? await getAdminCatalog(selected.id) : null;
+    return (
+      <Studio
+        mode="platform"
+        platform={platform ?? { companyName: "Storefront", logo: "" }}
+        stores={stores}
+        data={data}
+      />
+    );
   } catch (error) {
     console.error(error);
     return (

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const input = bodySchema.parse(await request.json());
     const phone = normalizeKePhone(input.mpesaPhone);
     if (!phone) throw new OrderError("Enter the Safaricom number that should receive the M-Pesa prompt");
-    const member = await currentMember();
+    const member = await currentMember(input.storeSlug);
     const order = await createPendingOrder(input, "mpesa", Boolean(member));
     try {
       const push = await stkPush({

@@ -1,0 +1,9 @@
+/* Store theme. Edit these colors in the IDE. */
+:root {
+  --color-ink: #111111;
+  --color-muted: #707072;
+  --color-line: #e5e5e5;
+  --color-canvas: #f6f6f6;
+  --color-sale: #d30000;
+  --color-member: #128a00;
+}

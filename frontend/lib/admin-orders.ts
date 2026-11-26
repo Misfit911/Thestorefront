@@ -1,6 +1,6 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/index";
-import { orderItems, orders } from "@/lib/db/schema";
+import { orderItems, orders, stores } from "@/lib/db/schema";
 import { readPaymentReadiness } from "@/lib/reconcile";
 
 export type AdminOrderItem = {
@@ -32,14 +32,17 @@ export type AdminOrder = {
   mpesaCheckoutRequestId: string | null;
   mpesaReceipt: string | null;
   createdAt: string;
+  storeName: string;
   items: AdminOrderItem[];
 };
 
-export async function listAdminOrders(): Promise<AdminOrder[]> {
-  const [orderRows, itemRows] = await Promise.all([
-    db.select().from(orders).orderBy(desc(orders.createdAt)),
+export async function listAdminOrders(storeId?: string | null): Promise<AdminOrder[]> {
+  const [orderRows, itemRows, storeRows] = await Promise.all([
+    storeId ? db.select().from(orders).where(eq(orders.storeId, storeId)).orderBy(desc(orders.createdAt)) : db.select().from(orders).orderBy(desc(orders.createdAt)),
     db.select().from(orderItems),
+    db.select({ id: stores.id, companyName: stores.companyName }).from(stores),
   ]);
+  const names = new Map(storeRows.map((store) => [store.id, store.companyName]));
   return orderRows.map((order) => ({
     id: order.id,
     orderNumber: order.orderNumber,
@@ -61,6 +64,7 @@ export async function listAdminOrders(): Promise<AdminOrder[]> {
     mpesaCheckoutRequestId: order.mpesaCheckoutRequestId,
     mpesaReceipt: order.mpesaReceipt,
     createdAt: order.createdAt.toISOString(),
+    storeName: names.get(order.storeId) ?? "Store",
     items: itemRows
       .filter((item) => item.orderId === order.id)
       .map((item) => ({

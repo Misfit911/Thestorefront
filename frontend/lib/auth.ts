@@ -1,6 +1,7 @@
 const encoder = new TextEncoder();
 
 export const ADMIN_COOKIE = "nn_admin";
+export const STORE_ADMIN_COOKIE = "nn_store_admin";
 export const MEMBER_COOKIE = "nn_member";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const MEMBER_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -43,40 +44,44 @@ async function hmac(secret: string, value: string) {
 }
 
 export async function signSession(secret: string) {
+  return signPlatformSession(secret);
+}
+
+export async function signPlatformSession(secret: string) {
   const payload = base64url(
-    encoder.encode(JSON.stringify({ role: "admin", exp: Date.now() + SESSION_MS })),
+    encoder.encode(JSON.stringify({ role: "platform", exp: Date.now() + SESSION_MS })),
   );
   const signature = await hmac(secret, payload);
   return `${payload}.${signature}`;
 }
 
 export async function verifySession(token: string | undefined | null) {
-  const secret = process.env.SESSION_SECRET;
-  if (!token || !secret) return false;
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return false;
-  const expected = await hmac(secret, payload);
-  if (!safeEqual(expected, signature)) return false;
-  try {
-    const json = JSON.parse(new TextDecoder().decode(base64urlDecode(payload))) as {
-      role?: string;
-      exp?: number;
-    };
-    return json.role === "admin" && typeof json.exp === "number" && json.exp > Date.now();
-  } catch {
-    return false;
-  }
+  return verifyPlatformSession(token);
 }
 
-export async function signMemberSession(secret: string, memberId: string) {
+export async function verifyPlatformSession(token: string | undefined | null) {
+  const json = await readPayload(token);
+  if (!json) return false;
+  return (json.role === "platform" || json.role === "admin") && typeof json.exp === "number" && json.exp > Date.now();
+}
+
+export async function signStoreSession(secret: string, storeId: string, slug: string) {
   const payload = base64url(
-    encoder.encode(JSON.stringify({ role: "member", sub: memberId, exp: Date.now() + MEMBER_SESSION_MS })),
+    encoder.encode(JSON.stringify({ role: "store", storeId, slug, exp: Date.now() + SESSION_MS })),
   );
   const signature = await hmac(secret, payload);
   return `${payload}.${signature}`;
 }
 
-export async function readMemberSession(token: string | undefined | null) {
+export async function readStoreSession(token: string | undefined | null) {
+  const json = await readPayload(token);
+  if (!json || json.role !== "store") return null;
+  if (typeof json.exp !== "number" || json.exp <= Date.now()) return null;
+  if (typeof json.storeId !== "string" || !json.storeId || typeof json.slug !== "string" || !json.slug) return null;
+  return { storeId: json.storeId, slug: json.slug };
+}
+
+async function readPayload(token: string | undefined | null) {
   const secret = process.env.SESSION_SECRET;
   if (!token || !secret) return null;
   const [payload, signature] = token.split(".");
@@ -84,15 +89,30 @@ export async function readMemberSession(token: string | undefined | null) {
   const expected = await hmac(secret, payload);
   if (!safeEqual(expected, signature)) return null;
   try {
-    const json = JSON.parse(new TextDecoder().decode(base64urlDecode(payload))) as {
+    return JSON.parse(new TextDecoder().decode(base64urlDecode(payload))) as {
       role?: string;
-      sub?: string;
       exp?: number;
+      storeId?: string;
+      slug?: string;
+      sub?: string;
     };
-    if (json.role !== "member" || typeof json.sub !== "string" || !json.sub) return null;
-    if (typeof json.exp !== "number" || json.exp <= Date.now()) return null;
-    return { id: json.sub };
   } catch {
     return null;
   }
+}
+
+export async function signMemberSession(secret: string, memberId: string, storeId: string) {
+  const payload = base64url(
+    encoder.encode(JSON.stringify({ role: "member", sub: memberId, storeId, exp: Date.now() + MEMBER_SESSION_MS })),
+  );
+  const signature = await hmac(secret, payload);
+  return `${payload}.${signature}`;
+}
+
+export async function readMemberSession(token: string | undefined | null) {
+  const json = await readPayload(token);
+  if (!json || json.role !== "member" || typeof json.sub !== "string" || !json.sub) return null;
+  if (typeof json.storeId !== "string" || !json.storeId) return null;
+  if (typeof json.exp !== "number" || json.exp <= Date.now()) return null;
+  return { id: json.sub, storeId: json.storeId };
 }

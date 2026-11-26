@@ -1,4 +1,4 @@
-import { orderReceiptEmail, orderStatusEmail, welcomeEmail } from "@/lib/email-templates";
+import { orderReceiptEmail, orderStatusEmail, placedOrderNotificationEmail, welcomeEmail } from "@/lib/email-templates";
 import type { OrderReceipt } from "@/lib/types";
 
 export async function sendMail(input: { to: string; subject: string; text: string; html: string }) {
@@ -43,4 +43,17 @@ export async function sendOrderStatusEmail(input: {
 }) {
   const message = orderStatusEmail(input);
   await sendMail({ to: input.to, ...message });
+}
+
+export function orderNotifyAddress() {
+  return process.env.ORDER_NOTIFY_EMAIL || "th3storefront@outlook.com";
+}
+
+export async function sendPlacedOrderNotification(input: {
+  storeName: string;
+  pickupAddress: string;
+  receipt: OrderReceipt;
+}) {
+  const message = placedOrderNotificationEmail(input);
+  await sendMail({ to: orderNotifyAddress(), ...message });
 }

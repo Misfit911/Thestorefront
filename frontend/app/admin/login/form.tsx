@@ -1,12 +1,17 @@
 "use client";
 
 import { useActionState } from "react";
-import { loginAction } from "@/app/admin/actions";
 
-export function LoginForm() {
-  const [state, action, pending] = useActionState(loginAction, null);
+type LoginState = { error: string } | null;
+
+export function LoginForm({
+  action,
+}: {
+  action: (state: LoginState, formData: FormData) => Promise<LoginState>;
+}) {
+  const [state, formAction, pending] = useActionState(action, null);
   return (
-    <form action={action} className="mt-6 space-y-3">
+    <form action={formAction} className="mt-6 space-y-3">
       <label className="block text-sm">
         Password
         <input name="password" type="password" required className="mt-1 w-full rounded-lg border border-line px-3 py-2" />

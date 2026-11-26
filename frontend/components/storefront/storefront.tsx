@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { DEPARTMENTS, departmentLabel, type Department, type StorefrontPayload } from "@/lib/types";
+import { departmentLabel, type Department, type StorefrontPayload } from "@/lib/types";
+import { shopDepartments } from "@/lib/catalog";
 import { MediaImage } from "@/components/media-image";
 import { Catalog, HeroPanel } from "@/components/storefront/catalog";
 import { StoreProvider, useStore } from "@/components/storefront/context";
@@ -36,8 +37,9 @@ function Shell() {
   const [slide, setSlide] = useState(0);
   const [slideShift, setSlideShift] = useState(100);
   const [slideSmooth, setSlideSmooth] = useState(false);
-  const hero1 = store.data.heroes.find((hero) => hero.slot === "hero1");
-  const hero2 = store.data.heroes.find((hero) => hero.slot === "hero2");
+  const homeHeroes = store.data.heroes.filter((hero) => !hero.department).sort((left, right) => left.sort - right.sort);
+  const hero1 = homeHeroes[0];
+  const laterHeroes = homeHeroes.slice(1);
   const menuOpen = store.overlays.at(-1)?.type === "menu";
   const menuHidesAnnouncement = menuOpen && isMobile;
   const barShown = announcementVisible && !menuHidesAnnouncement;
@@ -71,7 +73,7 @@ function Shell() {
         if (id) widths.set(id as Department, node.offsetWidth);
       }
       const gap = 16;
-      let shown = mobile ? [] : [...DEPARTMENTS];
+      let shown = mobile ? [] : shopDepartments(store.data).map((department) => department.slug);
       if (!mobile) {
         while (shown.length > 0) {
           const needed = shown.reduce((total, id) => total + (widths.get(id) ?? 0), 0) + gap * (shown.length - 1);
@@ -217,7 +219,7 @@ function Shell() {
         store.clearBag();
         store.rememberOrder({ orderId: receipt.orderId, orderNumber: receipt.orderNumber, email: receipt.email });
         store.showSuccess(receipt);
-        window.history.replaceState({}, "", "/");
+        window.history.replaceState({}, "", `/${store.data.settings.slug}`);
       }
     });
   }, [store]);
@@ -227,13 +229,13 @@ function Shell() {
       <h1 className="sr-only">{store.data.settings.companyName}</h1>
       <header ref={headerRef} className="fixed inset-x-0 top-0 z-50 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-white px-4">
         <button ref={logoRef} type="button" aria-label={store.data.settings.companyName} onClick={store.goHome} className="relative z-10">
-          <MediaImage src={store.data.settings.logo} alt="" className="h-6 w-auto" />
+          <MediaImage src={store.data.settings.logo} alt="" className="h-9 w-auto" />
         </button>
         <div ref={slotRef} className="flex min-w-0 items-center justify-center">
           <div ref={navMeasureRef} className="pointer-events-none absolute -left-[9999px] flex gap-4" aria-hidden="true">
-            {DEPARTMENTS.map((department) => (
-              <span key={department} data-department={department} className="border-b-2 border-transparent px-1 text-sm">
-                {departmentLabel(department)}
+            {shopDepartments(store.data).map((department) => (
+              <span key={department.slug} data-department={department.slug} className="border-b-2 border-transparent px-1 text-sm">
+                {departmentLabel(department.slug, store.data.departments)}
               </span>
             ))}
           </div>
@@ -249,7 +251,7 @@ function Shell() {
                 }}
                 className={`border-b-2 px-1 text-sm ${store.department === department ? "border-ink" : "border-transparent"}`}
               >
-                {departmentLabel(department)}
+                {departmentLabel(department, store.data.departments)}
               </button>
             ))}
           </nav>
@@ -334,9 +336,9 @@ function Shell() {
           </div>
         </div>
       ) : null}
-      {hero2 ? (
-        <HeroPanel image={hero2.image} eyebrow={hero2.eyebrow} headline={hero2.headline} buttonLabel={hero2.buttonLabel} onShop={store.scrollToCatalog} />
-      ) : null}
+      {laterHeroes.map((hero) => (
+        <HeroPanel key={hero.id} image={hero.image} eyebrow={hero.eyebrow} headline={hero.headline} buttonLabel={hero.buttonLabel} onShop={store.scrollToCatalog} />
+      ))}
       <Catalog />
       <Newsletter />
       <Footer settings={store.data.settings} flush />

@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Arimo } from "next/font/google";
+import { circularFaviconUrl } from "@/lib/circular-favicon";
+import { resolveImageSrc } from "@/lib/images";
+import { loadPlatformSettings } from "@/lib/db/queries";
 import "./globals.css";
 
 const arimo = Arimo({
@@ -8,31 +11,28 @@ const arimo = Arimo({
   variable: "--font-arimo",
 });
 
-
-
-export const metadata: Metadata = {
-  title: {
-    default: "Nike Nairobi",
-    template: "%s · Nike Nairobi",
-  },
-  description:
-    "Nike Nairobi is a store for shoes, clothing, and sport gear in Nairobi. Shop in Kenyan shillings, with delivery across Kenya or pickup in Westlands.",
-  applicationName: "Nike Nairobi",
-  openGraph: {
-    title: "Nike Nairobi",
-    description:
-      "Shoes, clothing, and sport gear from the Nike store in Nairobi. Prices in KES, with delivery or in-store pickup.",
-    locale: "en_KE",
-    type: "website",
-    siteName: "Nike Nairobi",
-  },
-};
-
 export const viewport: Viewport = {
   themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const platform = await loadPlatformSettings();
+    const name = platform?.companyName || "Storefront";
+    const icon = platform?.logo ? resolveImageSrc(platform.logo) : undefined;
+    return {
+      title: { absolute: name },
+      description: `${name} lists its stores.`,
+      applicationName: name,
+      icons: icon ? { icon: [{ url: circularFaviconUrl(icon), type: "image/png" }] } : undefined,
+      openGraph: { title: name, siteName: name, type: "website" },
+    };
+  } catch {
+    return { title: { absolute: "Storefront" } };
+  }
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

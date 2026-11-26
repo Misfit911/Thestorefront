@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       throw new OrderError("Too many payment attempts. Wait a few minutes and try again.", 429);
     }
     const input = checkoutSchema.parse(await request.json());
-    const member = await currentMember();
+    const member = await currentMember(input.storeSlug);
     const order = await createPendingOrder(input, "card", Boolean(member));
     try {
       const stripe = getStripe();

@@ -36,6 +36,20 @@
       "when": 1795280000000,
       "tag": "0004_members",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795360000000,
+      "tag": "0005_stores",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795440000000,
+      "tag": "0006_social_url",
+      "breakpoints": true
     }
   ]
 }
