@@ -11,7 +11,7 @@ function escapeHtml(value: string) {
 }
 
 function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://nike.sportswear.deals").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://customskenya.com").replace(/\/$/, "");
 }
 
 function wrapEmail(title: string, inner: string, footer?: string) {

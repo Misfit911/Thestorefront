@@ -417,7 +417,7 @@ function SuccessSheet({ receipt }: { receipt: OrderReceipt }) {
     <div>
       <div className="px-5 pt-5">
         <BackLink onClick={back} label="Back to shop" />
-        <h2 className="mt-6 text-3xl font-medium">Payment successful</h2>
+        <h2 className="mt-6 text-3xl font-medium">Order placed successfully</h2>
         <p className="mt-2 text-sm text-muted">Order {receipt.orderNumber}</p>
         <p className="mt-4 text-sm leading-6">
           {receipt.fullName}<br />
