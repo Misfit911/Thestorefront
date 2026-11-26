@@ -20,6 +20,11 @@ import { IconChevron, IconHeart } from "@/components/storefront/icons";
 import { ProductPrice } from "@/components/storefront/price";
 import { BackLink, Sheet } from "@/components/storefront/sheet";
 
+function coversNavigation(overlay: Overlay, previous: Overlay[]) {
+  if (overlay.type === "checkout" || overlay.type === "success") return true;
+  return previous.some((item) => item.type === "checkout" || item.type === "success");
+}
+
 export function Overlays() {
   const { overlays, back } = useStore();
   return (
@@ -31,9 +36,9 @@ export function Overlays() {
           onBack={back}
           active={index === overlays.length - 1}
           label={labelFor(overlay)}
-          coverNav={overlay.type === "checkout" || overlay.type === "success"}
+          coverNav={coversNavigation(overlay, overlays.slice(0, index))}
           contained={overlay.type === "product"}
-          zIndex={overlay.type === "checkout" || overlay.type === "success" ? 70 + index : 40}
+          zIndex={60 + index}
         >
           <OverlayBody overlay={overlay} />
         </Sheet>

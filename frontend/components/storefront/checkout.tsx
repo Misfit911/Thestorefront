@@ -144,9 +144,9 @@ export function CheckoutSheet() {
       </div>
       <section className="border-t border-line px-5 py-6">
         <h3 className="text-2xl font-medium">Delivery Options</h3>
-        <p className="mt-4 text-sm leading-6">
+        {/* <p className="mt-4 text-sm leading-6">
           Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span>
-        </p>
+        </p> */}
         <div className="mt-4 grid grid-cols-2 gap-3">
           {(["delivery", "pickup"] as const).map((option) => (
             <button
@@ -165,9 +165,9 @@ export function CheckoutSheet() {
         </div>
         {fulfillment === "delivery" && !saved ? (
           <div className="mt-5 space-y-3">
-            <p className="text-sm leading-6">
+            {/* <p className="text-sm leading-6">
               Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span>
-            </p>
+            </p> */}
             <Field label="Full name" value={form.fullName} onChange={(value) => update("fullName", value)} />
             <Field label="Email address" value={form.email} onChange={(value) => update("email", value)} type="email" />
             <Field label="Phone number" value={form.phone} onChange={(value) => update("phone", value)} type="tel" />
