@@ -189,7 +189,7 @@ export function CheckoutSheet() {
         ) : null}
         {fulfillment === "delivery" && saved ? (
           <div className="mt-5 text-sm leading-6">
-            <p>Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span></p>
+            {/* <p>Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span></p> */}
             <p className="font-medium">{form.fullName}</p>
             <p>{form.email}</p>
             <p>{form.phone}</p>
@@ -280,7 +280,7 @@ function Review({
   return (
     <div className="mt-6 border-t border-line pt-5">
       <h3 className="text-2xl font-medium">Order Review</h3>
-      <p className="mt-3 text-sm">Pickup address: {data.settings.pickupAddress}</p>
+      {/* <p className="mt-3 text-sm">Pickup address: {data.settings.pickupAddress}</p> */}
       <ul className="mt-4 space-y-3 text-sm">
         {bag.map((line) => {
           const product = data.products.find((item) => item.id === line.productId);
