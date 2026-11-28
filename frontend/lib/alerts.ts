@@ -4,14 +4,17 @@ import { nextSubscriptionStatus, planOffer } from "@/lib/plans";
 import { db } from "@/lib/db/index";
 import { orders, pushQueue, pushSubscriptions, stockAlerts, stores } from "@/lib/db/schema";
 
-type PushMessage = { title: string; body: string; url: string };
+type PushMessage = { title: string; body: string; url: string; storeId?: string };
 
 function vapidReady() {
   return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_SUBJECT);
 }
 
 export async function sendPush(storeId: string, message: PushMessage) {
-  if (!vapidReady()) return;
+  if (!vapidReady()) {
+    console.error("Push skipped: VAPID keys are not set");
+    return;
+  }
   const subs = await db
     .select()
     .from(pushSubscriptions)
@@ -57,8 +60,8 @@ export async function notifyStore(storeId: string, message: PushMessage, respect
 export async function recordNewOrder(storeId: string, orderId: string, orderNumber: string) {
   const [store] = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
   if (!store) return;
-  const message = { title: "New order", body: orderNumber, url: `/${store.slug}/admin` };
-  await notifyStore(storeId, message, true);
+  const message = { title: "New order", body: orderNumber, url: `/${store.slug}/admin`, storeId };
+  await notifyStore(storeId, message, false);
   if (isStoreOpen(store)) {
     await db.update(orders).set({ remindedOn: nairobiDate() }).where(eq(orders.id, orderId));
   }

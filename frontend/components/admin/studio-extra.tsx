@@ -305,34 +305,50 @@ export function OnboardingPanel() {
 
 export function StudioPush({ storeId }: { storeId: string | null }) {
   const [ready, setReady] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     void navigator.serviceWorker.register("/sw.js").then(() => setReady(true)).catch(() => setReady(false));
   }, []);
   if (!ready) return null;
   return (
-    <button
-      type="button"
-      className="rounded-full bg-white px-4 py-2 text-sm text-ink"
-      onClick={async () => {
-        const registration = await navigator.serviceWorker.ready;
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") return;
-        const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-        if (!key) return;
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(key),
-        });
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ storeId, subscription }),
-        });
-      }}
-    >
-      Install Studio
-    </button>
+    <span className="flex items-center gap-2">
+      <button
+        type="button"
+        className="rounded-full bg-white px-4 py-2 text-sm text-ink"
+        onClick={async () => {
+          const registration = await navigator.serviceWorker.ready;
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") {
+            setNote("Notifications are blocked");
+            return;
+          }
+          const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+          if (!key) {
+            setNote("Push keys are missing on this site");
+            return;
+          }
+          try {
+            const subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(key),
+            });
+            const response = await fetch("/api/push/subscribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ storeId, subscription }),
+            });
+            const json = (await response.json().catch(() => ({}))) as { error?: string };
+            setNote(response.ok ? "Notifications on" : json.error || "Could not save this phone");
+          } catch {
+            setNote("Could not turn on notifications");
+          }
+        }}
+      >
+        Install Studio
+      </button>
+      {note ? <span className="text-xs" role="status">{note}</span> : null}
+    </span>
   );
 }
 

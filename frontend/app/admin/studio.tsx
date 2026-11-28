@@ -64,6 +64,34 @@ export function Studio({
 }) {
   const [tab, setTab] = useState<Tab>(data ? "dashboard" : mode === "platform" ? "notifications" : "store");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [orderCount, setOrderCount] = useState(placedCount);
+  useEffect(() => {
+    setOrderCount(placedCount);
+  }, [placedCount]);
+  useEffect(() => {
+    const storeId = data?.storeId ?? "";
+    let stopped = false;
+    async function loadCount() {
+      const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : "";
+      const response = await fetch(`/api/studio/placed-count${query}`, { cache: "no-store" });
+      if (!response.ok || stopped) return;
+      const json = (await response.json()) as { count?: number };
+      if (typeof json.count === "number") setOrderCount(json.count);
+    }
+    const timer = window.setInterval(() => void loadCount(), 60_000);
+    const onMessage = (event: MessageEvent) => {
+      const payload = event.data as { type?: string; title?: string; storeId?: string } | null;
+      if (!payload || payload.type !== "studio-order" || payload.title !== "New order") return;
+      if (storeId && payload.storeId !== storeId) return;
+      setOrderCount((count) => count + 1);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
+    };
+  }, [data?.storeId]);
   useEffect(() => {
     const start = window.location.pathname;
     const link = document.querySelector('link[rel="manifest"]') ?? document.createElement("link");
@@ -77,7 +105,7 @@ export function Studio({
     ? [
         ["dashboard", "Dashboard", 0],
         ["store", "Business", 0],
-        ["orders", "Orders", placedCount],
+        ["orders", "Orders", orderCount],
         ["catalogue", "Catalogue", 0],
         ["products", "Products", alerts.length],
       ]
@@ -93,7 +121,7 @@ export function Studio({
     ["notifications", "Notifications", applications.length],
     ["platform", "Platform", 0],
     ["stores", "Stores", 0],
-    ["all-orders", "Orders", placedCount],
+    ["all-orders", "Orders", orderCount],
     ...storeSections,
     ["onboarding", "Onboarding", 0],
   ];
