@@ -29,9 +29,9 @@ export default async function HomePage() {
           Pick a package and use it free for 30 days. Link and Growth setup are optional. Custom Brand includes setup because we load the catalogue with you.
         </p>
         <div className="mt-10">
-          <link rel="stylesheet" href="/packages/packages.css" />
+          <link rel="stylesheet" href="/Packages/packages.css" />
           <div id="ck-packages" suppressHydrationWarning />
-          <Script src="/packages/packages.js" strategy="afterInteractive" />
+          <Script src="/Packages/packages.js" strategy="afterInteractive" />
         </div>
         <ApplyForm />
         <p className="mt-10 text-sm text-[#9fd7e2]">

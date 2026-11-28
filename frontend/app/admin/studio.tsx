@@ -223,10 +223,10 @@ export function Studio({
           {data && tab === "products" ? <Products data={data} alerts={alerts} /> : null}
           {tab === "onboarding" ? <OnboardingPanel /> : null}
           <footer className="mt-10 border-t border-line pt-4 text-sm text-muted">
-            Need any assistance? Contact us at{" "}
-            <a className="underline underline-offset-4" href="mailto:customsnairobi@gmail.com">customsnairobi@gmail.com</a>
+            Need any assistance? Contact us at our{" "}
+            <a className="underline underline-offset-4" href="mailto:customsnairobi@gmail.com">email</a>
             {" "}or{" "}
-            <a className="underline underline-offset-4" href="https://wa.me/254704416016" target="_blank" rel="noopener noreferrer">0704416016</a>.
+            <a className="underline underline-offset-4" href="https://wa.me/254704416016" target="_blank" rel="noopener noreferrer">WhatsApp number</a>.
           </footer>
         </div>
       </div>
@@ -498,7 +498,7 @@ function StoreForm({ data, allowPassword }: { data: StorefrontPayload; allowPass
           <label className="block text-sm">Secret key<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.stripeSecretKey} onChange={(event) => setForm({ ...form, stripeSecretKey: event.target.value })} /></label>
         </div>
       </Accordion>
-      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save store</button>
+      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save changes</button>
       <Notice message={message} />
     </form>
   );
@@ -1054,7 +1054,7 @@ function ProductForm({ data, initial, alerts, onDone }: { data: StorefrontPayloa
       </label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.kids} onChange={(event) => setForm({ ...form, kids: event.target.checked })} /> Kids product</label>
       <label className="block text-sm">Description<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
-      <label className="block text-sm">Delivery and returns<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.deliveryReturns} onChange={(event) => setForm({ ...form, deliveryReturns: event.target.value })} /></label>
+      {/* <label className="block text-sm">Delivery and returns<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.deliveryReturns} onChange={(event) => setForm({ ...form, deliveryReturns: event.target.value })} /></label> */}
 
       <div>
         <p className="text-sm font-medium">Departments</p>
@@ -1090,9 +1090,9 @@ function ProductForm({ data, initial, alerts, onDone }: { data: StorefrontPayloa
       <div>
         <p className="text-sm font-medium">Colours</p>
         {form.colors.map((color, index) => (
-          <div key={`color-${index}`} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+          <div key={`color-${index}`} className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
             <input className="rounded-lg border border-line px-2 py-2 text-sm" value={color.name} onChange={(event) => patchList("colors", index, { name: event.target.value })} />
-            <input className="rounded-lg border border-line px-2 py-2 text-sm" value={color.hex} onChange={(event) => patchList("colors", index, { hex: event.target.value })} />
+            <input type="color" aria-label="Colour" className="h-10 w-14 cursor-pointer rounded-lg border border-line bg-white p-1" value={/^#[0-9a-fA-F]{6}$/.test(color.hex) ? color.hex : "#111111"} onChange={(event) => patchList("colors", index, { hex: event.target.value })} />
             <button type="button" className="text-sm underline" onClick={() => setForm({ ...form, colors: form.colors.filter((_, item) => item !== index) })}>Remove</button>
           </div>
         ))}

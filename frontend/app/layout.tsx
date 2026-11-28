@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     const icon = platform?.logo ? resolveImageSrc(platform.logo) : undefined;
     return {
       title: { absolute: name },
-      description: `${name} lists its stores.`,
+      description: `${name} - Your Online Patreon.`,
       applicationName: name,
       icons: icon ? { icon: [{ url: circularFaviconUrl(icon), type: "image/png" }] } : undefined,
       openGraph: { title: name, siteName: name, type: "website" },
