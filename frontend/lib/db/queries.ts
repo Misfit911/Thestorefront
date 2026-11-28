@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/index";
 import {
   categories,
@@ -11,12 +11,17 @@ import {
   productImages,
   productInventory,
   productSizes,
+  orders,
   products,
+  stockAlerts,
+  storeApplications,
   stores,
 } from "@/lib/db/schema";
-import { publishableStripeKey, stripeConfigured } from "@/lib/stripe";
+import { nairobiDate } from "@/lib/hours";
+import { shopMethods } from "@/lib/shop-methods";
+import { ensureStoreContent, loadFooter, loadHelp } from "@/lib/db/store-content";
 import { isPublicSubscription } from "@/lib/stores";
-import type { Gender, Product, StorefrontPayload } from "@/lib/types";
+import type { Gender, Product, StorefrontPayload, StoreSettings } from "@/lib/types";
 
 export type ManagedStore = {
   id: string;
@@ -31,6 +36,27 @@ export type ManagedStore = {
   freeDeliveryThresholdCents: number;
   subscriptionStatus: string;
   adminAccessEnabled: boolean;
+  phone: string;
+  email: string;
+  location: string;
+  hoursDays: string;
+  hoursOpen: string;
+  hoursClose: string;
+  plan: string;
+  trialEndsAt: string | null;
+  setupPaid: boolean;
+  registrationNumber: string;
+  identificationDetails: string;
+  taxDetails: string;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
+  mtaaniAccount: string;
+  mpesaShortcode: string;
+  mpesaPasskey: string;
+  mpesaConsumerKey: string;
+  mpesaConsumerSecret: string;
+  stripePublishableKey: string;
+  stripeSecretKey: string;
 };
 
 export type DirectoryStore = {
@@ -40,24 +66,52 @@ export type DirectoryStore = {
   description: string;
 };
 
-function payments() {
-  const publishableKey = publishableStripeKey();
+function methodInput(row: typeof stores.$inferSelect) {
   return {
-    stripe: stripeConfigured(),
-    stripePublishableKey: publishableKey,
-    mpesa: Boolean(
-      process.env.MPESA_CONSUMER_KEY &&
-        process.env.MPESA_CONSUMER_SECRET &&
-        process.env.MPESA_SHORTCODE &&
-        process.env.MPESA_PASSKEY &&
-        process.env.MPESA_CALLBACK_URL,
-    ),
+    pickupEnabled: row.pickupEnabled,
+    deliveryEnabled: row.deliveryEnabled,
+    mtaaniAccount: row.mtaaniAccount,
+    mpesaShortcode: row.mpesaShortcode,
+    mpesaPasskey: row.mpesaPasskey,
+    mpesaConsumerKey: row.mpesaConsumerKey,
+    mpesaConsumerSecret: row.mpesaConsumerSecret,
+    stripePublishableKey: row.stripePublishableKey,
+    stripeSecretKey: row.stripeSecretKey,
   };
 }
 
-function asGender(value: string): Gender {
-  if (value === "men" || value === "women" || value === "unisex") return value;
-  return "unisex";
+function settingsFromRow(row: typeof stores.$inferSelect, revealSecrets: boolean): StoreSettings {
+  return {
+    companyName: row.companyName,
+    logo: row.logo,
+    description: row.description,
+    socialUrl: row.socialUrl,
+    announcement: row.announcement,
+    pickupAddress: row.pickupAddress,
+    deliveryFeeCents: row.deliveryFeeCents,
+    freeDeliveryThresholdCents: row.freeDeliveryThresholdCents,
+    slug: row.slug,
+    subscriptionStatus: row.subscriptionStatus,
+    adminAccessEnabled: row.adminAccessEnabled,
+    phone: row.phone,
+    email: row.email,
+    location: row.location,
+    hoursDays: row.hoursDays,
+    hoursOpen: row.hoursOpen,
+    hoursClose: row.hoursClose,
+    plan: row.plan,
+    trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
+    setupPaid: row.setupPaid,
+    pickupEnabled: row.pickupEnabled,
+    deliveryEnabled: row.deliveryEnabled,
+    mtaaniAccount: row.mtaaniAccount,
+    mpesaShortcode: revealSecrets ? row.mpesaShortcode : "",
+    mpesaPasskey: revealSecrets ? row.mpesaPasskey : "",
+    mpesaConsumerKey: revealSecrets ? row.mpesaConsumerKey : "",
+    mpesaConsumerSecret: revealSecrets ? row.mpesaConsumerSecret : "",
+    stripePublishableKey: row.stripePublishableKey,
+    stripeSecretKey: revealSecrets ? row.stripeSecretKey : "",
+  };
 }
 
 function mapStore(row: typeof stores.$inferSelect): ManagedStore {
@@ -74,7 +128,33 @@ function mapStore(row: typeof stores.$inferSelect): ManagedStore {
     freeDeliveryThresholdCents: row.freeDeliveryThresholdCents,
     subscriptionStatus: row.subscriptionStatus,
     adminAccessEnabled: row.adminAccessEnabled,
+    phone: row.phone,
+    email: row.email,
+    location: row.location,
+    hoursDays: row.hoursDays,
+    hoursOpen: row.hoursOpen,
+    hoursClose: row.hoursClose,
+    plan: row.plan,
+    trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
+    setupPaid: row.setupPaid,
+    registrationNumber: row.registrationNumber,
+    identificationDetails: row.identificationDetails,
+    taxDetails: row.taxDetails,
+    pickupEnabled: row.pickupEnabled,
+    deliveryEnabled: row.deliveryEnabled,
+    mtaaniAccount: row.mtaaniAccount,
+    mpesaShortcode: row.mpesaShortcode,
+    mpesaPasskey: row.mpesaPasskey,
+    mpesaConsumerKey: row.mpesaConsumerKey,
+    mpesaConsumerSecret: row.mpesaConsumerSecret,
+    stripePublishableKey: row.stripePublishableKey,
+    stripeSecretKey: row.stripeSecretKey,
   };
+}
+
+function asGender(value: string): Gender {
+  if (value === "men" || value === "women" || value === "unisex") return value;
+  return "unisex";
 }
 
 export async function loadPlatformSettings() {
@@ -91,7 +171,7 @@ export async function listManageStores() {
 export async function listDirectoryStores(): Promise<DirectoryStore[]> {
   const rows = await listManageStores();
   return rows
-    .filter((store) => isPublicSubscription(store.subscriptionStatus))
+    .filter((store) => isPublicSubscription(store.subscriptionStatus, store.trialEndsAt))
     .map((store) => ({
       slug: store.slug,
       companyName: store.companyName,
@@ -133,6 +213,7 @@ export async function loadCatalog(storeId: string, activeOnly: boolean): Promise
 
   const departmentSlugs = new Set(departmentRows.map((department) => department.slug));
 
+  const linkPlan = settingsRow.plan === "link";
   const mappedProducts: Product[] = productRows.map((product) => ({
     id: product.id,
     name: product.name,
@@ -141,7 +222,7 @@ export async function loadCatalog(storeId: string, activeOnly: boolean): Promise
     deliveryReturns: product.deliveryReturns,
     priceCents: product.priceCents,
     compareAtPriceCents: product.compareAtPriceCents,
-    membersOnly: product.membersOnly,
+    membersOnly: activeOnly && linkPlan ? false : product.membersOnly,
     badge: product.badge,
     gender: asGender(product.gender),
     kids: product.kids,
@@ -159,12 +240,16 @@ export async function loadCatalog(storeId: string, activeOnly: boolean): Promise
         label: size.label,
         sort: size.sort,
         inStock: stockRows.some(
-          (row) => row.productId === product.id && row.sizeLabel === size.label && row.quantity > 0,
+          (row) =>
+            row.productId === product.id &&
+            !row.hidden &&
+            row.sizeLabel === size.label &&
+            row.quantity > 0,
         ),
       })),
     stock: stockRows
       .filter((row) => row.productId === product.id)
-      .map((row) => ({ colorName: row.colorName, sizeLabel: row.sizeLabel, quantity: row.quantity })),
+      .map((row) => ({ colorName: row.colorName, sizeLabel: row.sizeLabel, quantity: row.quantity, hidden: row.hidden })),
     images: imageRows
       .filter((image) => image.productId === product.id)
       .map((image) => ({
@@ -176,21 +261,13 @@ export async function loadCatalog(storeId: string, activeOnly: boolean): Promise
       })),
   }));
 
+  const settings = settingsFromRow(settingsRow, !activeOnly);
+  await ensureStoreContent(settingsRow.id, settings);
+  const [footer, help] = await Promise.all([loadFooter(settingsRow.id), loadHelp(settingsRow.id)]);
+  const methods = shopMethods(methodInput(settingsRow));
   const payload: StorefrontPayload = {
     storeId: settingsRow.id,
-    settings: {
-      companyName: settingsRow.companyName,
-      logo: settingsRow.logo,
-      description: settingsRow.description,
-      socialUrl: settingsRow.socialUrl,
-      announcement: settingsRow.announcement,
-      pickupAddress: settingsRow.pickupAddress,
-      deliveryFeeCents: settingsRow.deliveryFeeCents,
-      freeDeliveryThresholdCents: settingsRow.freeDeliveryThresholdCents,
-      slug: settingsRow.slug,
-      subscriptionStatus: settingsRow.subscriptionStatus,
-      adminAccessEnabled: settingsRow.adminAccessEnabled,
-    },
+    settings,
     departments: departmentRows.map((department) => ({
       id: department.id,
       slug: department.slug,
@@ -229,7 +306,18 @@ export async function loadCatalog(storeId: string, activeOnly: boolean): Promise
       ];
     }),
     products: mappedProducts,
-    payments: payments(),
+    footer,
+    help,
+    payments: {
+      stripe: methods.stripe,
+      stripePublishableKey: methods.stripePublishableKey,
+      mpesa: methods.mpesa,
+    },
+    fulfillmentOptions: {
+      pickup: methods.pickup,
+      delivery: methods.delivery,
+      mtaani: methods.mtaani,
+    },
   };
 
   return payload;
@@ -240,11 +328,40 @@ export async function getStorefront(slug: string) {
   if (!store) return null;
   const catalog = await loadCatalog(store.id, true);
   if (!catalog) return null;
-  return { store, catalog, available: isPublicSubscription(store.subscriptionStatus) };
+  return { store, catalog, available: isPublicSubscription(store.subscriptionStatus, store.trialEndsAt) };
 }
 
 export async function getAdminCatalog(storeId: string) {
   const catalog = await loadCatalog(storeId, false);
   if (!catalog) throw new Error("STORE_NOT_SEEDED");
   return catalog;
+}
+
+export async function listPendingApplications() {
+  return db.select().from(storeApplications).where(eq(storeApplications.status, "pending")).orderBy(desc(storeApplications.createdAt));
+}
+
+export async function listUnseenStockAlerts(storeId?: string | null) {
+  const rows = await db.select().from(stockAlerts).where(isNull(stockAlerts.seenAt)).orderBy(desc(stockAlerts.createdAt));
+  return storeId ? rows.filter((row) => row.storeId === storeId) : rows;
+}
+
+export async function countPlacedOrders(storeId?: string | null) {
+  const rows = await db.select({ id: orders.id, storeId: orders.storeId }).from(orders).where(eq(orders.status, "placed"));
+  return storeId ? rows.filter((row) => row.storeId === storeId).length : rows.length;
+}
+
+export async function storeOrderStats(storeId: string) {
+  const rows = await db
+    .select({ status: orders.status, totalCents: orders.totalCents, createdAt: orders.createdAt })
+    .from(orders)
+    .where(eq(orders.storeId, storeId));
+  const today = nairobiDate();
+  let todayCents = 0;
+  let placedCents = 0;
+  for (const row of rows) {
+    if (row.status !== "cancelled" && nairobiDate(row.createdAt) === today) todayCents += row.totalCents;
+    if (row.status === "placed") placedCents += row.totalCents;
+  }
+  return { todayCents, placedCents };
 }

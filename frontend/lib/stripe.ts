@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 
-function stripeMode(key: string) {
+export function stripeMode(key: string) {
   const match = /^(?:pk|sk|rk)_(test|live)_/.exec(key);
   return match?.[1] ?? null;
 }
@@ -18,8 +18,7 @@ export function stripeConfigured() {
   return Boolean(publishableStripeKey());
 }
 
-export function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("STRIPE_NOT_CONFIGURED");
-  return new Stripe(key);
+export function getStripe(secret = process.env.STRIPE_SECRET_KEY) {
+  if (!secret) throw new Error("STRIPE_NOT_CONFIGURED");
+  return new Stripe(secret);
 }

@@ -1,11 +1,23 @@
+export type MpesaAccount = {
+  consumerKey: string;
+  consumerSecret: string;
+  shortcode: string;
+  passkey: string;
+  callbackUrl: string;
+};
+
 export function mpesaConfigured() {
-  return Boolean(
-    process.env.MPESA_CONSUMER_KEY &&
-      process.env.MPESA_CONSUMER_SECRET &&
-      process.env.MPESA_SHORTCODE &&
-      process.env.MPESA_PASSKEY &&
-      process.env.MPESA_CALLBACK_URL,
-  );
+  return Boolean(envMpesaAccount());
+}
+
+function envMpesaAccount(): MpesaAccount | null {
+  const consumerKey = process.env.MPESA_CONSUMER_KEY ?? "";
+  const consumerSecret = process.env.MPESA_CONSUMER_SECRET ?? "";
+  const shortcode = process.env.MPESA_SHORTCODE ?? "";
+  const passkey = process.env.MPESA_PASSKEY ?? "";
+  const callbackUrl = process.env.MPESA_CALLBACK_URL ?? "";
+  if (!consumerKey || !consumerSecret || !shortcode || !passkey || !callbackUrl) return null;
+  return { consumerKey, consumerSecret, shortcode, passkey, callbackUrl };
 }
 
 function baseUrl() {
@@ -30,11 +42,8 @@ export function darajaTimestamp(date = new Date()) {
   return `${read("year")}${read("month")}${read("day")}${hour}${read("minute")}${read("second")}`;
 }
 
-async function accessToken() {
-  const key = process.env.MPESA_CONSUMER_KEY;
-  const secret = process.env.MPESA_CONSUMER_SECRET;
-  if (!key || !secret) throw new Error("MPESA_NOT_CONFIGURED");
-  const auth = Buffer.from(`${key}:${secret}`).toString("base64");
+async function accessToken(account: MpesaAccount) {
+  const auth = Buffer.from(`${account.consumerKey}:${account.consumerSecret}`).toString("base64");
   const response = await fetch(`${baseUrl()}/oauth/v1/generate?grant_type=client_credentials`, {
     headers: { Authorization: `Basic ${auth}` },
     cache: "no-store",
@@ -44,20 +53,19 @@ async function accessToken() {
   return json.access_token;
 }
 
-function password() {
-  const shortcode = process.env.MPESA_SHORTCODE ?? "";
-  const passkey = process.env.MPESA_PASSKEY ?? "";
+function password(account: MpesaAccount) {
   const timestamp = darajaTimestamp();
   return {
-    shortcode,
+    shortcode: account.shortcode,
     timestamp,
-    password: Buffer.from(`${shortcode}${passkey}${timestamp}`).toString("base64"),
+    password: Buffer.from(`${account.shortcode}${account.passkey}${timestamp}`).toString("base64"),
   };
 }
 
-export async function stkPush(input: { phone: string; amountShillings: number; accountReference: string }) {
-  const token = await accessToken();
-  const creds = password();
+export async function stkPush(input: { phone: string; amountShillings: number; accountReference: string }, account = envMpesaAccount()) {
+  if (!account) throw new Error("MPESA_NOT_CONFIGURED");
+  const token = await accessToken(account);
+  const creds = password(account);
   const response = await fetch(`${baseUrl()}/mpesa/stkpush/v1/processrequest`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -70,7 +78,7 @@ export async function stkPush(input: { phone: string; amountShillings: number; a
       PartyA: input.phone,
       PartyB: creds.shortcode,
       PhoneNumber: input.phone,
-      CallBackURL: process.env.MPESA_CALLBACK_URL,
+      CallBackURL: account.callbackUrl,
       AccountReference: input.accountReference.slice(0, 12),
       TransactionDesc: "Customs Kenya",
     }),
@@ -89,9 +97,10 @@ export async function stkPush(input: { phone: string; amountShillings: number; a
   return { checkoutRequestId: json.CheckoutRequestID, merchantRequestId: json.MerchantRequestID ?? "" };
 }
 
-export async function stkQuery(checkoutRequestId: string) {
-  const token = await accessToken();
-  const creds = password();
+export async function stkQuery(checkoutRequestId: string, account = envMpesaAccount()) {
+  if (!account) throw new Error("MPESA_NOT_CONFIGURED");
+  const token = await accessToken(account);
+  const creds = password(account);
   const response = await fetch(`${baseUrl()}/mpesa/stkpushquery/v1/query`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

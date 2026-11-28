@@ -184,13 +184,17 @@ export function HeroPanel({
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/15" />
         <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center px-6 pb-10 text-center text-white md:pb-14">
-          <p className="text-base">{eyebrow}</p>
-          <h2 className="mt-2 max-w-md whitespace-pre-line text-4xl font-black uppercase leading-[0.95] tracking-tight md:text-6xl">
-            {headline}
-          </h2>
-          <button type="button" onClick={onShop} className="mt-5 rounded-full bg-white px-7 py-2 text-sm font-medium text-ink">
-            {buttonLabel}
-          </button>
+          {eyebrow.trim() ? <p className="text-base">{eyebrow}</p> : null}
+          {headline.trim() ? (
+            <h2 className="mt-2 max-w-md whitespace-pre-line text-4xl font-black uppercase leading-[0.95] tracking-tight md:text-6xl">
+              {headline}
+            </h2>
+          ) : null}
+          {buttonLabel.trim() ? (
+            <button type="button" onClick={onShop} className="pointer-events-auto mt-5 rounded-full bg-white px-7 py-2 text-sm font-medium text-ink">
+              {buttonLabel}
+            </button>
+          ) : null}
         </div>
       </section>
     </div>

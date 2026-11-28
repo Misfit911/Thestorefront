@@ -1,4 +1,4 @@
-export type StockRow = { colorName: string; sizeLabel: string; quantity: number };
+export type StockRow = { colorName: string; sizeLabel: string; quantity: number; hidden?: boolean };
 
 export type DemandLine = {
   productId: string;
@@ -18,7 +18,8 @@ export function variantQuantity(
   const row = stock.find(
     (entry) => entry.colorName.trim().toLowerCase() === colorName && entry.sizeLabel.trim().toLowerCase() === sizeLabel,
   );
-  return row?.quantity ?? 0;
+  if (!row || row.hidden) return 0;
+  return row.quantity;
 }
 
 export function selectionQuantity(
@@ -78,10 +79,18 @@ export function stockCombinations(
   const colorsOrPlain = colorNames.length > 0 ? colorNames : [""];
   const sizesOrPlain = sizeLabels.length > 0 ? sizeLabels : [""];
   return colorsOrPlain.flatMap((colorName) =>
-    sizesOrPlain.map((sizeLabel) => ({
-      colorName,
-      sizeLabel,
-      quantity: variantQuantity(current, colorName, sizeLabel),
-    })),
+    sizesOrPlain.map((sizeLabel) => {
+      const existing = current.find(
+        (entry) =>
+          entry.colorName.trim().toLowerCase() === colorName.trim().toLowerCase() &&
+          entry.sizeLabel.trim().toLowerCase() === sizeLabel.trim().toLowerCase(),
+      );
+      return {
+        colorName,
+        sizeLabel,
+        quantity: existing?.hidden ? 0 : (existing?.quantity ?? 0),
+        hidden: existing?.hidden ?? false,
+      };
+    }),
   );
 }

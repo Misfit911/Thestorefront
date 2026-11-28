@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/index";
 import { orderItems, orders, products, productColors, productImages, productSizes, stores } from "@/lib/db/schema";
-import { releaseStock, takeStock } from "@/lib/inventory";
+import { ensureStock, releaseStock, takeStock } from "@/lib/inventory";
+import { recordNewOrder, recordSoldOut } from "@/lib/alerts";
 import { sendOrderReceipt, sendOrderStatusEmail, sendPlacedOrderNotification } from "@/lib/email";
 import { deliveryFeeFor, shillingsFromCents } from "@/lib/money";
 import { unitPriceCents } from "@/lib/pricing";
@@ -10,6 +11,7 @@ import { nextStatuses } from "@/lib/order-status";
 import { normalizeKePhone } from "@/lib/phone";
 import { decideMpesa, decideStripe, type StripeView } from "@/lib/reconcile";
 import { getStripe } from "@/lib/stripe";
+import { mpesaAccount } from "@/lib/shop-methods";
 import { isPublicSubscription } from "@/lib/stores";
 import type { CheckoutInput } from "@/lib/validators";
 import type { OrderReceipt } from "@/lib/types";
@@ -26,12 +28,12 @@ function orderNumber() {
   const date = new Date();
   const ymd = date.toISOString().slice(0, 10).replace(/-/g, "");
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `NN-${ymd}-${suffix}`;
+  return `CK-${ymd}-${suffix}`;
 }
 
 async function settingsRow(slug: string) {
   const [row] = await db.select().from(stores).where(eq(stores.slug, slug)).limit(1);
-  if (!row || !isPublicSubscription(row.subscriptionStatus)) throw new OrderError("The store is not ready for checkout", 503);
+  if (!row || !isPublicSubscription(row.subscriptionStatus, row.trialEndsAt)) throw new OrderError("The store is not ready for checkout", 503);
   return row;
 }
 
@@ -81,7 +83,7 @@ export async function createPendingOrder(input: CheckoutInput, paymentMethod: "c
   const id = crypto.randomUUID();
   const number = orderNumber();
   await db.transaction(async (tx) => {
-    const reserved = await takeStock(
+    const available = await ensureStock(
       tx,
       priced.lines.map((line) => ({
         productId: line.productId,
@@ -91,7 +93,7 @@ export async function createPendingOrder(input: CheckoutInput, paymentMethod: "c
         quantity: line.quantity,
       })),
     );
-    if (!reserved.ok) throw new OrderError(reserved.message);
+    if (!available.ok) throw new OrderError(available.message);
     await tx.insert(orders).values({
       id,
       storeId: priced.settings.id,
@@ -102,14 +104,14 @@ export async function createPendingOrder(input: CheckoutInput, paymentMethod: "c
       email: input.email.toLowerCase(),
       phone: priced.phone,
       fulfillment: input.fulfillment,
-      area: input.fulfillment === "delivery" ? input.area : null,
-      street: input.fulfillment === "delivery" ? input.street : null,
+      area: input.fulfillment === "pickup" ? null : input.area,
+      street: input.fulfillment === "pickup" ? null : input.street,
       note: input.note || null,
       pickupAddress: input.fulfillment === "pickup" ? priced.settings.pickupAddress : null,
       subtotalCents: priced.subtotalCents,
       deliveryFeeCents: priced.deliveryFeeCents,
       totalCents: priced.totalCents,
-      inventoryHeld: true,
+      inventoryHeld: false,
     });
     await tx.insert(orderItems).values(
       priced.lines.map((line) => ({
@@ -128,6 +130,11 @@ export async function createPendingOrder(input: CheckoutInput, paymentMethod: "c
   });
   const order = await getOrder(id);
   if (!order) throw new OrderError("The order could not be created", 500);
+  try {
+    await recordNewOrder(priced.settings.id, id, number);
+  } catch (error) {
+    console.error("Order notification failed", error);
+  }
   return order;
 }
 
@@ -136,7 +143,7 @@ export async function createPlacedOrder(input: CheckoutInput, member = false) {
   const id = crypto.randomUUID();
   const number = orderNumber();
   await db.transaction(async (tx) => {
-    const reserved = await takeStock(
+    const available = await ensureStock(
       tx,
       priced.lines.map((line) => ({
         productId: line.productId,
@@ -146,7 +153,7 @@ export async function createPlacedOrder(input: CheckoutInput, member = false) {
         quantity: line.quantity,
       })),
     );
-    if (!reserved.ok) throw new OrderError(reserved.message);
+    if (!available.ok) throw new OrderError(available.message);
     await tx.insert(orders).values({
       id,
       storeId: priced.settings.id,
@@ -157,14 +164,14 @@ export async function createPlacedOrder(input: CheckoutInput, member = false) {
       email: input.email.toLowerCase(),
       phone: priced.phone,
       fulfillment: input.fulfillment,
-      area: input.fulfillment === "delivery" ? input.area : null,
-      street: input.fulfillment === "delivery" ? input.street : null,
+      area: input.fulfillment === "pickup" ? null : input.area,
+      street: input.fulfillment === "pickup" ? null : input.street,
       note: input.note || null,
       pickupAddress: priced.settings.pickupAddress,
       subtotalCents: priced.subtotalCents,
       deliveryFeeCents: priced.deliveryFeeCents,
       totalCents: priced.totalCents,
-      inventoryHeld: true,
+      inventoryHeld: false,
     });
     await tx.insert(orderItems).values(
       priced.lines.map((line) => ({
@@ -185,13 +192,15 @@ export async function createPlacedOrder(input: CheckoutInput, member = false) {
   if (!order) throw new OrderError("The order could not be created", 500);
   try {
     const receipt = await toReceipt(id);
-    if (receipt) {
+    if (receipt && priced.settings.email) {
       await sendPlacedOrderNotification({
+        to: priced.settings.email,
         storeName: priced.settings.companyName,
         pickupAddress: priced.settings.pickupAddress,
         receipt,
       });
     }
+    await recordNewOrder(priced.settings.id, id, number);
   } catch (error) {
     console.error("Order notification failed", error);
   }
@@ -262,11 +271,66 @@ export function emailMatches(orderEmail: string, email: string) {
 }
 
 export async function markPaid(orderId: string, extra: { mpesaReceipt?: string | null; stripePaymentIntentId?: string }) {
+  let held: { storeId: string; items: { productId: string | null; name: string }[]; zeroed: { productId: string; colorName: string; sizeLabel: string }[] } | null;
+  try {
+    held = await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    if (!current || current.status !== "pending") return null;
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+    const demand = items.flatMap((item) =>
+      item.productId
+        ? [{ productId: item.productId, name: item.name, color: item.color, size: item.size, quantity: item.quantity }]
+        : [],
+    );
+    let inventoryHeld = current.inventoryHeld;
+    let zeroed: { productId: string; colorName: string; sizeLabel: string }[] = [];
+    if (!current.inventoryHeld) {
+      const available = await ensureStock(tx, demand);
+      if (!available.ok) throw new OrderError(available.message);
+      const reserved = await takeStock(tx, demand);
+      if (!reserved.ok) throw new OrderError(reserved.message);
+      inventoryHeld = true;
+      zeroed = reserved.zeroed;
+    }
+    await tx
+      .update(orders)
+      .set({
+        status: "paid",
+        statusDetail: null,
+        inventoryHeld,
+        ...(extra.mpesaReceipt ? { mpesaReceipt: extra.mpesaReceipt } : {}),
+        ...(extra.stripePaymentIntentId ? { stripePaymentIntentId: extra.stripePaymentIntentId } : {}),
+      })
+      .where(eq(orders.id, orderId));
+    return { storeId: current.storeId, items, zeroed };
+  });
+  } catch (error) {
+    if (error instanceof OrderError) {
+      await markPaidWithoutStock(orderId, error.message, extra);
+      return;
+    }
+    throw error;
+  }
+  if (!held) return;
+  try {
+    const receipt = await toReceipt(orderId);
+    if (receipt) await sendOrderReceipt(receipt);
+    for (const row of held.zeroed) {
+      const line = held.items.find((item) => item.productId === row.productId);
+      await recordSoldOut(held.storeId, row.productId, row.colorName, row.sizeLabel, line?.name ?? "A product");
+    }
+  } catch (error) {
+    console.error("Receipt email failed", error);
+  }
+}
+
+async function markPaidWithoutStock(orderId: string, detail: string, extra: { mpesaReceipt?: string | null; stripePaymentIntentId?: string }) {
   const updated = await db
     .update(orders)
     .set({
       status: "paid",
-      statusDetail: null,
+      statusDetail: detail.slice(0, 300),
+      inventoryHeld: false,
       ...(extra.mpesaReceipt ? { mpesaReceipt: extra.mpesaReceipt } : {}),
       ...(extra.stripePaymentIntentId ? { stripePaymentIntentId: extra.stripePaymentIntentId } : {}),
     })
@@ -362,7 +426,8 @@ export async function confirmStripeOrder(orderId: string) {
   const order = await getOrder(orderId);
   if (!order || !order.stripePaymentIntentId) throw new OrderError("Order not found", 404);
   if (order.status !== "pending") return order;
-  const stripe = getStripe();
+  const [shop] = await db.select().from(stores).where(eq(stores.id, order.storeId)).limit(1);
+  const stripe = getStripe(shop?.stripeSecretKey || undefined);
   const intent = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
   await applyStripePayment(order.id, stripeViewOf(intent));
   return getOrder(order.id);
@@ -373,7 +438,9 @@ export async function syncMpesaOrder(orderId: string) {
   if (!order) throw new OrderError("Order not found", 404);
   if (order.status !== "pending" || !order.mpesaCheckoutRequestId) return order;
   try {
-    const result = await stkQuery(order.mpesaCheckoutRequestId);
+    const [shop] = await db.select().from(stores).where(eq(stores.id, order.storeId)).limit(1);
+    const account = shop ? mpesaAccount(shop) : null;
+    const result = await stkQuery(order.mpesaCheckoutRequestId, account);
     await applyMpesaPayment(order.id, mpesaOutcome(result));
   } catch (error) {
     console.error("M-Pesa status check failed", error);
@@ -388,26 +455,53 @@ export async function updateOrderStatus(orderId: string, next: string) {
     if (!nextStatuses(current.status, current.fulfillment).includes(next)) {
       throw new OrderError("That status change is not available");
     }
+    const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+    let inventoryHeld = current.inventoryHeld;
+    let zeroed: { productId: string; colorName: string; sizeLabel: string }[] = [];
     if (next === "cancelled" && current.inventoryHeld) {
-      const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
       await releaseStock(tx, items);
+      inventoryHeld = false;
+    }
+    if (next === "received" && !current.inventoryHeld) {
+      const demand = items.flatMap((item) =>
+        item.productId
+          ? [{ productId: item.productId, name: item.name, color: item.color, size: item.size, quantity: item.quantity }]
+          : [],
+      );
+      const reserved = await takeStock(tx, demand);
+      if (!reserved.ok) throw new OrderError(reserved.message);
+      inventoryHeld = true;
+      zeroed = reserved.zeroed;
     }
     await tx
       .update(orders)
       .set({
         status: next,
         statusDetail: null,
-        inventoryHeld: next === "cancelled" ? false : current.inventoryHeld,
+        inventoryHeld,
       })
       .where(eq(orders.id, orderId));
     return {
+      storeId: current.storeId,
       email: current.email,
       fullName: current.fullName,
       orderNumber: current.orderNumber,
       fulfillment: current.fulfillment,
       totalCents: current.totalCents,
+      items,
+      zeroed,
     };
   });
+  try {
+    for (const row of notice.zeroed) {
+      const line = notice.items.find((item) => item.productId === row.productId);
+      await recordSoldOut(notice.storeId, row.productId, row.colorName, row.sizeLabel, line?.name ?? "A product");
+    }
+  } catch (error) {
+    console.error("Sold-out alert failed", error);
+  }
+  const [shop] = await db.select({ plan: stores.plan }).from(stores).where(eq(stores.id, notice.storeId)).limit(1);
+  if (shop?.plan === "link") return;
   await sendOrderStatusEmail({
     to: notice.email,
     fullName: notice.fullName,

@@ -50,6 +50,13 @@
       "when": 1795440000000,
       "tag": "0006_social_url",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795520000000,
+      "tag": "0007_launch",
+      "breakpoints": true
     }
   ]
 }

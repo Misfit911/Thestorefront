@@ -13,6 +13,15 @@ import { ProductPrice } from "@/components/storefront/price";
 import { BackLink } from "@/components/storefront/sheet";
 import { useStore } from "@/components/storefront/context";
 
+type Fulfillment = "delivery" | "pickup" | "details" | "mtaani";
+
+function initialFulfillment(options: { pickup: boolean; delivery: boolean; mtaani: boolean }): Fulfillment {
+  if (!options.pickup && !options.delivery && !options.mtaani) return "details";
+  if (options.delivery) return "delivery";
+  if (options.pickup) return "pickup";
+  return "mtaani";
+}
+
 type FormState = {
   fullName: string;
   email: string;
@@ -27,7 +36,7 @@ const emptyForm: FormState = { fullName: "", email: "", phone: "", area: "", str
 export function CheckoutSheet() {
   const store = useStore();
   const { data, bag, back, clearBag, rememberOrder, showSuccess, push } = store;
-  const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
+  const [fulfillment, setFulfillment] = useState<Fulfillment>(() => initialFulfillment(data.fulfillmentOptions));
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saved, setSaved] = useState(false);
   const [bagOpen, setBagOpen] = useState(false);
@@ -82,7 +91,54 @@ export function CheckoutSheet() {
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
-    if (fulfillment === "delivery") setSaved(false);
+    if (fulfillment !== "pickup") setSaved(false);
+  }
+
+  async function payMpesa() {
+    if (oversold || unavailable) return;
+    setBusy(true);
+    setError(null);
+    const response = await fetch("/api/checkout/mpesa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, mpesaPhone: form.phone.trim() }),
+    });
+    const json = (await response.json()) as OrderReceipt & { error?: string };
+    setBusy(false);
+    if (!response.ok) {
+      setError(json.error || "M-Pesa could not send the prompt");
+      return;
+    }
+    setError("Check the phone for the M-Pesa prompt. The order is confirmed after you approve it.");
+  }
+
+  async function payCard() {
+    if (oversold || unavailable) return;
+    setBusy(true);
+    setError(null);
+    const response = await fetch("/api/checkout/stripe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = (await response.json()) as { clientSecret?: string; publishableKey?: string; error?: string };
+    setBusy(false);
+    if (!response.ok || !json.clientSecret || !json.publishableKey) {
+      setError(json.error || "Card payment could not be started");
+      return;
+    }
+    const stripeJs = await import("@stripe/stripe-js");
+    const stripe = await stripeJs.loadStripe(json.publishableKey);
+    if (!stripe) {
+      setError("Card payment could not be started");
+      return;
+    }
+    const result = await stripe.confirmPayment({
+      clientSecret: json.clientSecret,
+      confirmParams: { return_url: window.location.href },
+      redirect: "if_required",
+    });
+    if (result.error) setError(result.error.message || "The card was declined");
   }
 
   async function placeOrder() {
@@ -143,27 +199,30 @@ export function CheckoutSheet() {
         ) : null}
       </div>
       <section className="border-t border-line px-5 py-6">
-        <h3 className="text-2xl font-medium">Delivery Options</h3>
-        {/* <p className="mt-4 text-sm leading-6">
-          Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span>
-        </p> */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {(["delivery", "pickup"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                setFulfillment(option);
-                setSaved(false);
-                setError(null);
-              }}
-              className={`rounded-xl border px-3 py-4 text-sm font-medium ${fulfillment === option ? "border-ink" : "border-line"}`}
-            >
-              {option === "delivery" ? "Delivery" : "Pick-Up"}
-            </button>
-          ))}
-        </div>
-        {fulfillment === "delivery" && !saved ? (
+        <h3 className="text-2xl font-medium">{fulfillment === "details" ? "Delivery details" : "Delivery options"}</h3>
+        {fulfillment === "details" ? null : (
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {([
+              data.fulfillmentOptions.delivery ? ["delivery", "Delivery"] : null,
+              data.fulfillmentOptions.pickup ? ["pickup", "Pick-Up"] : null,
+              data.fulfillmentOptions.mtaani ? ["mtaani", "Pickup Mtaani"] : null,
+            ] as Array<[Fulfillment, string] | null>).flatMap((option) => (option ? [option] : [])).map(([option, label]) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setFulfillment(option);
+                  setSaved(false);
+                  setError(null);
+                }}
+                className={`rounded-xl border px-3 py-4 text-sm font-medium ${fulfillment === option ? "border-ink" : "border-line"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {fulfillment !== "pickup" && !saved ? (
           <div className="mt-5 space-y-3">
             {/* <p className="text-sm leading-6">
               Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span>
@@ -187,7 +246,7 @@ export function CheckoutSheet() {
             </button>
           </div>
         ) : null}
-        {fulfillment === "delivery" && saved ? (
+        {fulfillment !== "pickup" && saved ? (
           <div className="mt-5 text-sm leading-6">
             {/* <p>Pickup address: <span className="font-medium">{data.settings.pickupAddress}</span></p> */}
             <p className="font-medium">{form.fullName}</p>
@@ -218,6 +277,8 @@ export function CheckoutSheet() {
             total={total}
             busy={busy || oversold || unavailable}
             onBuy={() => void placeOrder()}
+            onMpesa={data.payments.mpesa ? () => void payMpesa() : null}
+            onCard={data.payments.stripe ? () => void payCard() : null}
           />
         ) : null}
         {error ? <p className="mt-4 text-sm text-sale">{error}</p> : null}
@@ -229,11 +290,11 @@ export function CheckoutSheet() {
         ) : null}
       </section>
       <div className="px-5 pb-6 text-center">
-        <button type="button" onClick={() => push({ type: "bag" })} className="text-sm underline underline-offset-4">
+        <button type="button" onClick={() => push({ type: "bag", review: true })} className="text-sm underline underline-offset-4">
           Review bag
         </button>
       </div>
-      <Footer settings={data.settings} />
+      <Footer settings={data.settings} items={data.footer} />
     </div>
   );
 }
@@ -267,12 +328,16 @@ function Review({
   delivery,
   total,
   onBuy,
+  onMpesa,
+  onCard,
   busy,
 }: {
   subtotal: number;
   delivery: number;
   total: number;
   onBuy: () => void;
+  onMpesa: (() => void) | null;
+  onCard: (() => void) | null;
   busy: boolean;
 }) {
   const { bag, data, member } = useStore();
@@ -302,6 +367,16 @@ function Review({
       <button type="button" disabled={busy} onClick={onBuy} className="mt-5 w-full rounded-full bg-ink py-3.5 text-white disabled:opacity-50">
         {busy ? "Placing order…" : "Place order"}
       </button>
+      {onMpesa ? (
+        <button type="button" disabled={busy} onClick={onMpesa} className="mt-3 w-full rounded-full border border-ink py-3.5 disabled:opacity-50">
+          Pay with M-Pesa
+        </button>
+      ) : null}
+      {onCard ? (
+        <button type="button" disabled={busy} onClick={onCard} className="mt-3 w-full rounded-full border border-ink py-3.5 disabled:opacity-50">
+          Pay with card
+        </button>
+      ) : null}
     </div>
   );
 }

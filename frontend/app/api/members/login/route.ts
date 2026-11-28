@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     }
     const email = parsed.data.email.toLowerCase();
     const store = await getStoreBySlug(parsed.data.storeSlug);
-    if (!store || !isPublicSubscription(store.subscriptionStatus)) {
+    if (!store || !isPublicSubscription(store.subscriptionStatus, store.trialEndsAt)) {
       return Response.json({ error: "This store is not available" }, { status: 404 });
     }
     const [member] = await db

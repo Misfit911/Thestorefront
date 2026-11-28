@@ -89,7 +89,7 @@ function OverlayBody({ overlay }: { overlay: Overlay }) {
     case "added":
       return <AddedSheet productId={overlay.productId} size={overlay.size} color={overlay.color} />;
     case "bag":
-      return <BagSheet />;
+      return <BagSheet review={Boolean(overlay.review)} />;
     case "checkout":
       return <CheckoutSheet />;
     case "success":
@@ -315,7 +315,7 @@ function ProductSheet({ productId }: { productId: string }) {
         </summary>
         <p className="pb-4 text-sm leading-6 text-muted">{product.deliveryReturns}</p>
       </details> */}
-      <Footer settings={store.data.settings} />
+      <Footer settings={store.data.settings} items={store.data.footer} />
       </div>
     </div>
   );
@@ -337,7 +337,7 @@ function AddedSheet({ productId, size, color }: { productId: string; size: strin
   );
 }
 
-function BagSheet() {
+function BagSheet({ review = false }: { review?: boolean }) {
   const store = useStore();
   const signedIn = Boolean(store.member);
   const subtotal = store.bag.reduce((sum, line) => {
@@ -400,11 +400,13 @@ function BagSheet() {
               );
             })}
           </ul>
-          <div className="sticky bottom-0 mt-auto bg-white p-5">
-            <button type="button" onClick={() => store.push({ type: "checkout" })} className="w-full rounded-full bg-ink py-3.5 text-white">
-              Go to Checkout
-            </button>
-          </div>
+          {review ? null : (
+            <div className="sticky bottom-0 mt-auto bg-white p-5">
+              <button type="button" onClick={() => store.push({ type: "checkout" })} className="w-full rounded-full bg-ink py-3.5 text-white">
+                Go to Checkout
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

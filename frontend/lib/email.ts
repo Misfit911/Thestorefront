@@ -45,15 +45,13 @@ export async function sendOrderStatusEmail(input: {
   await sendMail({ to: input.to, ...message });
 }
 
-export function orderNotifyAddress() {
-  return process.env.ORDER_NOTIFY_EMAIL || "th3storefront@outlook.com";
-}
-
 export async function sendPlacedOrderNotification(input: {
+  to: string;
   storeName: string;
   pickupAddress: string;
   receipt: OrderReceipt;
 }) {
+  if (!input.to) return;
   const message = placedOrderNotificationEmail(input);
-  await sendMail({ to: orderNotifyAddress(), ...message });
+  await sendMail({ to: input.to, ...message });
 }

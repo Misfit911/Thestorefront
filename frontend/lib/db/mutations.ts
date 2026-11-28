@@ -15,10 +15,13 @@ import {
   productInventory,
   productSizes,
   products,
+  storeApplications,
   stores,
+  subscribers,
 } from "@/lib/db/schema";
+import { planOffer, productCap, trialEndFrom } from "@/lib/plans";
 import { hasDepartmentRoom, isValidStoreSlug, slugifyName } from "@/lib/stores";
-import { renameThemeFile, writeThemeFile } from "@/lib/theme-file";
+import { deleteThemeFile, renameThemeFile, writeThemeFile } from "@/lib/theme-file";
 import type { ProductInput } from "@/lib/validators";
 
 export class StoreEditError extends Error {}
@@ -65,6 +68,14 @@ export async function createStore(input: {
   subscriptionStatus: string;
   adminAccessEnabled: boolean;
   password: string;
+  plan?: string;
+  phone?: string;
+  email?: string;
+  location?: string;
+  hoursDays?: string;
+  hoursOpen?: string;
+  hoursClose?: string;
+  setupPaid?: boolean;
 }) {
   if (!isValidStoreSlug(input.slug)) throw new StoreEditError("Use a path of letters, numbers, hyphens, or underscores");
   const [taken] = await db.select({ id: stores.id }).from(stores).where(eq(stores.slug, input.slug)).limit(1);
@@ -84,6 +95,15 @@ export async function createStore(input: {
     subscriptionStatus: input.subscriptionStatus,
     adminAccessEnabled: input.adminAccessEnabled,
     passwordHash: await hashPassword(input.password),
+    phone: input.phone ?? "",
+    email: input.email ?? "",
+    location: input.location ?? "",
+    hoursDays: input.hoursDays ?? "mon,tue,wed,thu,fri,sat",
+    hoursOpen: input.hoursOpen ?? "09:00",
+    hoursClose: input.hoursClose ?? "18:00",
+    plan: input.plan ?? "link",
+    setupPaid: input.setupPaid ?? false,
+    trialEndsAt: input.subscriptionStatus === "trial" ? trialEndFrom() : null,
   });
   await writeThemeFile(input.slug);
   return id;
@@ -103,6 +123,14 @@ export async function updateStoreRegistry(input: {
   subscriptionStatus: string;
   adminAccessEnabled: boolean;
   password?: string;
+  plan?: string;
+  phone?: string;
+  email?: string;
+  location?: string;
+  hoursDays?: string;
+  hoursOpen?: string;
+  hoursClose?: string;
+  setupPaid?: boolean;
 }) {
   if (!isValidStoreSlug(input.slug)) throw new StoreEditError("Use a path of letters, numbers, hyphens, or underscores");
   const [current] = await db.select().from(stores).where(eq(stores.id, input.id)).limit(1);
@@ -126,10 +154,28 @@ export async function updateStoreRegistry(input: {
       subscriptionStatus: input.subscriptionStatus,
       adminAccessEnabled: input.adminAccessEnabled,
       ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
+      ...(input.plan ? { plan: input.plan } : {}),
+      ...(input.phone !== undefined ? { phone: input.phone } : {}),
+      ...(input.email !== undefined ? { email: input.email } : {}),
+      ...(input.location !== undefined ? { location: input.location } : {}),
+      ...(input.hoursDays !== undefined ? { hoursDays: input.hoursDays } : {}),
+      ...(input.hoursOpen !== undefined ? { hoursOpen: input.hoursOpen } : {}),
+      ...(input.hoursClose !== undefined ? { hoursClose: input.hoursClose } : {}),
+      ...(input.setupPaid !== undefined ? { setupPaid: input.setupPaid } : {}),
     })
     .where(eq(stores.id, input.id));
   if (input.slug !== current.slug) await renameThemeFile(current.slug, input.slug);
   return current.slug;
+}
+
+export async function deleteStore(id: string) {
+  const [store] = await db.select({ id: stores.id, slug: stores.slug }).from(stores).where(eq(stores.id, id)).limit(1);
+  if (!store) throw new StoreEditError("Store was not found");
+  await db.delete(subscribers).where(eq(subscribers.storeId, id));
+  await db.update(storeApplications).set({ storeId: null }).where(eq(storeApplications.storeId, id));
+  await db.delete(stores).where(eq(stores.id, id));
+  await deleteThemeFile(store.slug);
+  return store.slug;
 }
 
 export async function saveSettings(
@@ -144,6 +190,21 @@ export async function saveSettings(
     deliveryFeeKes: number;
     freeDeliveryThresholdKes: number;
     password?: string;
+    phone: string;
+    email: string;
+    location: string;
+    hoursDays: string;
+    hoursOpen: string;
+    hoursClose: string;
+    pickupEnabled: boolean;
+    deliveryEnabled: boolean;
+    mtaaniAccount: string;
+    mpesaShortcode: string;
+    mpesaPasskey: string;
+    mpesaConsumerKey: string;
+    mpesaConsumerSecret: string;
+    stripePublishableKey: string;
+    stripeSecretKey: string;
   },
 ) {
   const [updated] = await db
@@ -158,6 +219,21 @@ export async function saveSettings(
       deliveryFeeCents: kesToCents(input.deliveryFeeKes),
       freeDeliveryThresholdCents: kesToCents(input.freeDeliveryThresholdKes),
       ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
+      phone: input.phone,
+      email: input.email,
+      location: input.location,
+      hoursDays: input.hoursDays,
+      hoursOpen: input.hoursOpen,
+      hoursClose: input.hoursClose,
+      pickupEnabled: input.pickupEnabled,
+      deliveryEnabled: input.deliveryEnabled,
+      mtaaniAccount: input.mtaaniAccount,
+      mpesaShortcode: input.mpesaShortcode,
+      mpesaPasskey: input.mpesaPasskey,
+      mpesaConsumerKey: input.mpesaConsumerKey,
+      mpesaConsumerSecret: input.mpesaConsumerSecret,
+      stripePublishableKey: input.stripePublishableKey,
+      stripeSecretKey: input.stripeSecretKey,
     })
     .where(eq(stores.id, storeId))
     .returning({ id: stores.id });
@@ -314,7 +390,22 @@ export async function reorderCategories(storeId: string, ids: string[]) {
   });
 }
 
+async function assertProductRoom(storeId: string, productId: string) {
+  const [store] = await db.select({ plan: stores.plan }).from(stores).where(eq(stores.id, storeId)).limit(1);
+  const cap = productCap(store?.plan ?? "link");
+  if (cap == null) return;
+  const active = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.storeId, storeId), eq(products.active, true)));
+  if (active.some((row) => row.id === productId)) return;
+  if (active.length >= cap) {
+    throw new StoreEditError(`The ${planOffer(store?.plan ?? "link").name} plan allows ${cap} active products`);
+  }
+}
+
 export async function setProductActive(storeId: string, id: string, active: boolean) {
+  if (active) await assertProductRoom(storeId, id);
   const updated = await db
     .update(products)
     .set({ active })
@@ -347,6 +438,7 @@ export async function upsertProduct(storeId: string, input: ProductInput) {
     }
   }
   const id = input.id ?? crypto.randomUUID();
+  if (input.active) await assertProductRoom(storeId, id);
   await db.transaction(async (tx) => {
     const values = {
       name: input.name,
@@ -386,13 +478,13 @@ export async function upsertProduct(storeId: string, input: ProductInput) {
         sort: index,
       });
     }
-    const quantityFor = (colorName: string, sizeLabel: string) => {
+    const stockMeta = (colorName: string, sizeLabel: string) => {
       const row = input.stock.find(
         (entry) =>
           entry.colorName.trim().toLowerCase() === colorName.trim().toLowerCase() &&
           entry.sizeLabel.trim().toLowerCase() === sizeLabel.trim().toLowerCase(),
       );
-      return row?.quantity ?? 0;
+      return { quantity: row?.hidden ? 0 : (row?.quantity ?? 0), hidden: row?.hidden ?? !row };
     };
     if (input.sizes.length > 0) {
       await tx.insert(productSizes).values(
@@ -401,7 +493,9 @@ export async function upsertProduct(storeId: string, input: ProductInput) {
           productId: id,
           label: size.label,
           sort: index,
-          inStock: input.colors.some((color) => quantityFor(color.name, size.label) > 0) || quantityFor("", size.label) > 0,
+          inStock:
+            input.colors.some((color) => stockMeta(color.name, size.label).quantity > 0 && !stockMeta(color.name, size.label).hidden) ||
+            (stockMeta("", size.label).quantity > 0 && !stockMeta("", size.label).hidden),
         })),
       );
     }
@@ -409,13 +503,17 @@ export async function upsertProduct(storeId: string, input: ProductInput) {
     const inventorySizes = input.sizes.length > 0 ? input.sizes.map((size) => size.label) : [""];
     await tx.insert(productInventory).values(
       inventoryColors.flatMap((colorName) =>
-        inventorySizes.map((sizeLabel) => ({
-          id: crypto.randomUUID(),
-          productId: id,
-          colorName,
-          sizeLabel,
-          quantity: quantityFor(colorName, sizeLabel),
-        })),
+        inventorySizes.map((sizeLabel) => {
+          const meta = stockMeta(colorName, sizeLabel);
+          return {
+            id: crypto.randomUUID(),
+            productId: id,
+            colorName,
+            sizeLabel,
+            quantity: meta.quantity,
+            hidden: meta.hidden,
+          };
+        }),
       ),
     );
     const assigned = new Map<string, { department: string; category: string }>();

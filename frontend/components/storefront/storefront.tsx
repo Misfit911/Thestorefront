@@ -7,6 +7,7 @@ import { MediaImage } from "@/components/media-image";
 import { Catalog, HeroPanel } from "@/components/storefront/catalog";
 import { StoreProvider, useStore } from "@/components/storefront/context";
 import { Footer } from "@/components/storefront/footer";
+import { CookieBar } from "@/components/cookie-bar";
 import { Newsletter } from "@/components/storefront/newsletter";
 import { IconBag, IconClose, IconMenu, IconSearch, IconUser } from "@/components/storefront/icons";
 import { MemberDialog } from "@/components/storefront/member-dialog";
@@ -340,11 +341,12 @@ function Shell() {
         <HeroPanel key={hero.id} image={hero.image} eyebrow={hero.eyebrow} headline={hero.headline} buttonLabel={hero.buttonLabel} onShop={store.scrollToCatalog} />
       ))}
       <Catalog />
-      <Newsletter />
-      <Footer settings={store.data.settings} flush />
+      {store.data.settings.plan === "link" ? null : <Newsletter />}
+      <Footer settings={store.data.settings} items={store.data.footer} help={store.data.help} flush />
       </div>
       <Overlays />
       <MemberDialog />
+      <CookieBar />
     </div>
   );
 }

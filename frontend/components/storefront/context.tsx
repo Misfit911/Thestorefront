@@ -9,7 +9,7 @@ export type OverlayInput =
   | { type: "menu" }
   | { type: "product"; productId: string }
   | { type: "added"; productId: string; size: string | null; color: string | null }
-  | { type: "bag" }
+  | { type: "bag"; review?: boolean }
   | { type: "checkout" }
   | { type: "success"; receipt: OrderReceipt }
   | { type: "orders" }

@@ -22,6 +22,105 @@ export const stores = pgTable("stores", {
   subscriptionStatus: text("subscription_status").notNull().default("trial"),
   adminAccessEnabled: boolean("admin_access_enabled").notNull().default(true),
   passwordHash: text("password_hash"),
+  phone: text("phone").notNull().default(""),
+  email: text("email").notNull().default(""),
+  location: text("location").notNull().default(""),
+  hoursDays: text("hours_days").notNull().default("mon,tue,wed,thu,fri,sat"),
+  hoursOpen: text("hours_open").notNull().default("09:00"),
+  hoursClose: text("hours_close").notNull().default("18:00"),
+  plan: text("plan").notNull().default("custom"),
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  setupPaid: boolean("setup_paid").notNull().default(false),
+  registrationNumber: text("registration_number").notNull().default(""),
+  identificationDetails: text("identification_details").notNull().default(""),
+  taxDetails: text("tax_details").notNull().default(""),
+  pickupEnabled: boolean("pickup_enabled").notNull().default(false),
+  deliveryEnabled: boolean("delivery_enabled").notNull().default(false),
+  mtaaniAccount: text("mtaani_account").notNull().default(""),
+  mpesaShortcode: text("mpesa_shortcode").notNull().default(""),
+  mpesaPasskey: text("mpesa_passkey").notNull().default(""),
+  mpesaConsumerKey: text("mpesa_consumer_key").notNull().default(""),
+  mpesaConsumerSecret: text("mpesa_consumer_secret").notNull().default(""),
+  stripePublishableKey: text("stripe_publishable_key").notNull().default(""),
+  stripeSecretKey: text("stripe_secret_key").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const storeApplications = pgTable("store_applications", {
+  id: text("id").primaryKey(),
+  plan: text("plan").notNull(),
+  businessName: text("business_name").notNull(),
+  location: text("location").notNull(),
+  phone: text("phone").notNull(),
+  socialUrl: text("social_url").notNull(),
+  email: text("email").notNull().default(""),
+  extraSocials: text("extra_socials").notNull().default(""),
+  hoursDays: text("hours_days").notNull().default("mon,tue,wed,thu,fri,sat"),
+  hoursOpen: text("hours_open").notNull().default("09:00"),
+  hoursClose: text("hours_close").notNull().default("18:00"),
+  registrationNumber: text("registration_number").notNull().default(""),
+  identificationDetails: text("identification_details").notNull().default(""),
+  taxDetails: text("tax_details").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  storeId: text("store_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const footerItems = pgTable("footer_items", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull().default("text"),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  sort: integer("sort").notNull(),
+});
+
+export const helpItems = pgTable("help_items", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  sort: integer("sort").notNull(),
+});
+
+export const stockAlerts = pgTable(
+  "stock_alerts",
+  {
+    id: text("id").primaryKey(),
+    storeId: text("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    colorName: text("color_name").notNull().default(""),
+    sizeLabel: text("size_label").notNull().default(""),
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("stock_alerts_variant_unique").on(table.productId, table.colorName, table.sizeLabel)],
+);
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").references(() => stores.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pushQueue = pgTable("push_queue", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  url: text("url").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -133,6 +232,7 @@ export const productInventory = pgTable(
     colorName: text("color_name").notNull().default(""),
     sizeLabel: text("size_label").notNull().default(""),
     quantity: integer("quantity").notNull().default(0),
+    hidden: boolean("hidden").notNull().default(false),
   },
   (table) => [unique("product_inventory_variant_unique").on(table.productId, table.colorName, table.sizeLabel)],
 );
@@ -173,6 +273,7 @@ export const orders = pgTable("orders", {
   mpesaMerchantRequestId: text("mpesa_merchant_request_id"),
   mpesaReceipt: text("mpesa_receipt"),
   inventoryHeld: boolean("inventory_held").notNull().default(false),
+  remindedOn: text("reminded_on"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

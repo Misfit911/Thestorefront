@@ -1,45 +1,47 @@
+import Script from "next/script";
+import { ApplyForm } from "@/components/apply-form";
+import { CookieBar } from "@/components/cookie-bar";
 import { MediaImage } from "@/components/media-image";
-import { listDirectoryStores, loadPlatformSettings } from "@/lib/db/queries";
+import { loadPlatformSettings } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
 export default async function HomePage() {
+  let logo = "";
+  let name = "Customs Kenya - Your Online Patreon";
   try {
-    const [platform, stores] = await Promise.all([loadPlatformSettings(), listDirectoryStores()]);
-    const name = platform?.companyName || "Storefront";
-    return (
-      <main className="mx-auto min-h-screen max-w-5xl px-6 py-16">
-        <div className="flex items-center gap-4">
-          {platform?.logo ? <MediaImage src={platform.logo} alt="" className="h-10 w-auto" /> : null}
-          <h1 className="text-3xl font-medium">{name}</h1>
-        </div>
-        {stores.length === 0 ? (
-          <p className="mt-10 text-sm text-muted">No stores are open yet.</p>
-        ) : (
-          <ul className="mt-10 grid gap-4 sm:grid-cols-2">
-            {stores.map((store) => (
-              <li key={store.slug}>
-                <a href={`/${store.slug}`} className="flex gap-4 rounded-2xl border border-line bg-white p-4">
-                  <MediaImage src={store.logo} alt="" className="h-14 w-14 shrink-0 object-contain" />
-                  <span>
-                    <span className="block text-lg font-medium">{store.companyName}</span>
-                    {store.description ? <span className="mt-1 block text-sm text-muted">{store.description}</span> : null}
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </main>
-    );
-  } catch (error) {
-    console.error(error);
-    return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
-        <h1 className="text-2xl font-bold">Storefront</h1>
-        <p className="mt-3 text-sm text-muted">The directory is not available yet. Finish database setup, then refresh.</p>
-      </main>
-    );
+    const platform = await loadPlatformSettings();
+    logo = platform?.logo || "/customs_kenya_logo.png";
+    name = platform?.companyName || name;
+  } catch {
+    logo = "/customs_kenya_logo.png";
   }
+  return (
+    <main className="min-h-screen bg-[#071422] text-white">
+      <section className="mx-auto max-w-5xl px-6 py-16">
+        {logo ? <MediaImage src={logo} alt={name} className="mb-6 h-20 w-auto" /> : null}
+        <p className="text-sm uppercase tracking-[0.18em] text-[#9fd7e2]">{name}</p>
+        <h1 className="mt-3 max-w-3xl text-4xl font-medium leading-tight md:text-6xl">From DMs to instant orders.</h1>
+        <p className="mt-5 max-w-2xl text-lg text-[#d5e4ee]">
+          Customs Kenya gives social media sellers a live catalogue and a checkout their customers can use without asking “Is this available?”
+        </p>
+        <p className="mt-4 max-w-2xl text-[#d5e4ee]">
+          Pick a package and use it free for 30 days. Link and Growth setup are optional. Custom Brand includes setup because we load the catalogue with you.
+        </p>
+        <div className="mt-10">
+          <link rel="stylesheet" href="/packages/packages.css" />
+          <div id="ck-packages" suppressHydrationWarning />
+          <Script src="/packages/packages.js" strategy="afterInteractive" />
+        </div>
+        <ApplyForm />
+        <p className="mt-10 text-sm text-[#9fd7e2]">
+          Have any questions? Send an email at{" "}
+          <a className="underline" href="mailto:customsnairobi@gmail.com">customsnairobi@gmail.com</a>
+          {" "}or call{" "}
+          <a className="underline" href="https://wa.me/254704416016" target="_blank" rel="noopener noreferrer">0704416016</a>.
+        </p>
+      </section>
+      <CookieBar />
+    </main>
+  );
 }

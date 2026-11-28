@@ -1,4 +1,4 @@
-import { access, mkdir, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const DEFAULT_THEME_CSS = `/* Store theme. Edit these colors in the IDE. */
@@ -30,6 +30,14 @@ export async function writeThemeFile(slug: string) {
   await mkdir(path.dirname(file), { recursive: true });
   if (await exists(file)) return;
   await writeFile(file, DEFAULT_THEME_CSS, "utf8");
+}
+
+export async function deleteThemeFile(slug: string) {
+  try {
+    await unlink(themeCssPath(slug));
+  } catch {
+    return;
+  }
 }
 
 export async function renameThemeFile(from: string, to: string) {

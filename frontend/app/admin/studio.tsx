@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   addCategoryAction,
@@ -8,6 +8,7 @@ import {
   addHeroAction,
   addHighlightAction,
   createStoreAction,
+  deleteStoreAction,
   deleteCategoryAction,
   deleteDepartmentAction,
   deleteHeroAction,
@@ -26,6 +27,10 @@ import {
   updateStoreAction,
 } from "@/app/admin/actions";
 import { OrdersPanel } from "@/app/admin/orders-panel";
+import { Accordion, ApplicationsPanel, DashboardPanel, FooterEditor, OnboardingPanel, SeenDot, StudioPush } from "@/components/admin/studio-extra";
+import { IconClose, IconMenu } from "@/components/storefront/icons";
+import { uploadImageFile } from "@/components/image-field";
+import type { StockAlert } from "@/lib/types";
 import { ImageField } from "@/components/image-field";
 import { MediaImage } from "@/components/media-image";
 import type { ManagedStore } from "@/lib/db/queries";
@@ -35,84 +40,195 @@ import { stockCombinations } from "@/lib/stock";
 import { departmentLabel, type Department, type Gender, type Hero, type Product, type StorefrontPayload } from "@/lib/types";
 
 type StudioMode = "platform" | "store";
-type Tab = "platform" | "stores" | "all-orders" | "store" | "orders" | "heroes" | "highlights" | "categories" | "products";
+type Tab = "platform" | "stores" | "all-orders" | "dashboard" | "store" | "orders" | "catalogue" | "products" | "notifications" | "alerts" | "onboarding";
+type TabItem = [Tab, string, number];
 
 export function Studio({
   mode,
   platform,
   stores,
   data,
+  applications = [],
+  alerts = [],
+  placedCount = 0,
+  orderStats = { todayCents: 0, placedCents: 0 },
 }: {
   mode: StudioMode;
   platform: { companyName: string; logo: string };
   stores: ManagedStore[];
   data: StorefrontPayload | null;
+  applications?: { id: string; plan: string; businessName: string; phone: string; location: string; createdAt: Date | string }[];
+  alerts?: StockAlert[];
+  placedCount?: number;
+  orderStats?: { todayCents: number; placedCents: number };
 }) {
-  const [tab, setTab] = useState<Tab>(mode === "platform" ? "stores" : "store");
+  const [tab, setTab] = useState<Tab>(data ? "dashboard" : mode === "platform" ? "notifications" : "store");
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    const start = window.location.pathname;
+    const link = document.querySelector('link[rel="manifest"]') ?? document.createElement("link");
+    link.setAttribute("rel", "manifest");
+    link.setAttribute("href", `/api/manifest?start=${encodeURIComponent(start)}`);
+    if (!link.parentNode) document.head.appendChild(link);
+  }, []);
+  const pushStoreId = mode === "store" ? data?.storeId ?? null : null;
   const title = mode === "platform" ? platform.companyName : data?.settings.companyName || platform.companyName;
-  const tabs: [Tab, string][] =
-    mode === "platform"
-      ? [
-          ["platform", "Platform"],
-          ["stores", "Stores"],
-          ["all-orders", "Orders"],
-          ...(data
-            ? ([
-                ["store", "Store info"],
-                ["orders", "Store orders"],
-                ["heroes", "Heroes"],
-                ["highlights", "Highlights"],
-                ["categories", "Categories"],
-                ["products", "Products"],
-              ] as [Tab, string][])
-            : []),
-        ]
-      : [
-          ["store", "Store"],
-          ["orders", "Orders"],
-          ["heroes", "Heroes"],
-          ["highlights", "Highlights"],
-          ["categories", "Categories"],
-          ["products", "Products"],
-        ];
+  const storeSections: TabItem[] = data
+    ? [
+        ["dashboard", "Dashboard", 0],
+        ["store", "Business", 0],
+        ["orders", "Orders", placedCount],
+        ["catalogue", "Catalogue", 0],
+        ["products", "Products", alerts.length],
+      ]
+    : [];
+  const storeTabs: TabItem[] = data
+    ? [
+        ["onboarding", "Onboarding", 0],
+        ...storeSections,
+        ["notifications", "Notifications", alerts.length],
+      ]
+    : [["onboarding", "Onboarding", 0]];
+  const platformMenu: TabItem[] = [
+    ["notifications", "Notifications", applications.length],
+    ["platform", "Platform", 0],
+    ["stores", "Stores", 0],
+    ["all-orders", "Orders", placedCount],
+    ...storeSections,
+    ["onboarding", "Onboarding", 0],
+  ];
+  const menuTabs = mode === "platform" ? platformMenu : storeTabs;
+  const desktopTabs = mode === "platform" ? platformMenu : storeTabs;
+  const restTabs: TabItem[] = mode === "platform" && data ? [["alerts", "Notifications", alerts.length]] : [];
+  function openTab(id: Tab) {
+    setTab(id);
+    setMenuOpen(false);
+  }
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#f6f6f6]">
-      <header className="flex items-center justify-between bg-ink px-5 py-4 text-white">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-white/70">{title}</p>
+    <div className="min-h-screen bg-[#f6f6f6] md:grid md:h-screen md:grid-cols-[220px_minmax(0,1fr)] md:overflow-hidden">
+      <aside className="hidden bg-white md:block md:h-screen md:overflow-y-auto md:border-r md:border-line">
+        <div className="px-4 py-5">
+          <p className="text-xs uppercase tracking-wide text-muted">{title}</p>
           <h1 className="text-xl font-medium">Studio</h1>
         </div>
-        <form action={mode === "store" && data ? storeLogoutAction.bind(null, data.settings.slug) : logoutAction}>
-          <button type="submit" className="text-sm underline underline-offset-4">Sign out</button>
-        </form>
-      </header>
-      {mode === "platform" ? (
-        <div className="flex gap-2 overflow-x-auto px-4 pt-3">
-          <a href="/admin" className="rounded-full bg-white px-4 py-2 text-sm">All stores</a>
-          {stores.map((store) => (
-            <a key={store.id} href={`/admin?store=${store.slug}`} className={`rounded-full px-4 py-2 text-sm ${data?.storeId === store.id ? "bg-ink text-white" : "bg-white"}`}>
-              {store.companyName}
-            </a>
+        <nav className="flex flex-col gap-1 px-3 pb-6">
+          {desktopTabs.map(([id, label, count]) => (
+            <button key={id} type="button" onClick={() => openTab(id)} className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${tab === id ? "bg-ink text-white" : "hover:bg-[#f6f6f6]"}`}>
+              <span>
+                {label}
+                {mode === "platform" && data && id === "orders" ? <span className="mt-0.5 block text-xs opacity-70">{data.settings.companyName}</span> : null}
+              </span>
+              {count > 0 ? <span className="rounded-full bg-sale px-2 text-xs text-white">{count}</span> : null}
+            </button>
           ))}
+        </nav>
+      </aside>
+      <div className="min-w-0 md:h-screen md:overflow-y-auto">
+        <header className="sticky top-0 z-20 bg-ink text-white">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <div className="min-w-0 md:hidden">
+              <p className="truncate text-xs uppercase tracking-wide text-white/70">{title}</p>
+              <h1 className="text-lg font-medium">Studio</h1>
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              <StudioPush storeId={pushStoreId} />
+              <form className="hidden md:block" action={mode === "store" && data ? storeLogoutAction.bind(null, data.settings.slug) : logoutAction}>
+                <button type="submit" className="text-sm underline underline-offset-4">Sign out</button>
+              </form>
+              <button type="button" className="p-1 md:hidden" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+                {menuOpen ? <IconClose className="h-6 w-6" /> : <IconMenu className="h-6 w-6" />}
+              </button>
+            </div>
+          </div>
+          {menuOpen ? (
+            <div className="max-h-[70vh] overflow-y-auto border-t border-white/15 bg-white px-4 py-3 text-ink md:hidden">
+              <nav className="flex flex-col gap-1">
+                {menuTabs.map(([id, label, count]) => (
+                  <button key={id} type="button" onClick={() => openTab(id)} className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${tab === id ? "bg-ink text-white" : "hover:bg-[#f6f6f6]"}`}>
+                    <span>
+                      {label}
+                      {mode === "platform" && data && id === "orders" ? <span className="mt-0.5 block text-xs opacity-70">{data.settings.companyName}</span> : null}
+                    </span>
+                    {count > 0 ? <span className="rounded-full bg-sale px-2 text-xs text-white">{count}</span> : null}
+                  </button>
+                ))}
+              </nav>
+              <form className="mt-3 border-t border-line pt-3" action={mode === "store" && data ? storeLogoutAction.bind(null, data.settings.slug) : logoutAction}>
+                <button type="submit" className="px-3 py-2 text-sm underline underline-offset-4">Sign out</button>
+              </form>
+            </div>
+          ) : null}
+          {mode === "platform" ? (
+            <div className="flex gap-2 overflow-x-auto px-4 pb-2">
+              <a href="/admin" className={`shrink-0 rounded-full px-4 py-2 text-sm ${data ? "bg-white/15 text-white" : "bg-white text-ink"}`}>All stores</a>
+              {stores.map((store) => (
+                <a key={store.id} href={`/admin?store=${store.slug}`} className={`shrink-0 rounded-full px-4 py-2 text-sm ${data?.storeId === store.id ? "bg-white text-ink" : "bg-white/15 text-white"}`}>
+                  {store.companyName}
+                </a>
+              ))}
+            </div>
+          ) : null}
+          {restTabs.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto px-4 py-2">
+              {restTabs.map(([id, label, count]) => (
+                <button key={id} type="button" onClick={() => openTab(id)} className={`relative shrink-0 rounded-full px-4 py-2 text-sm ${tab === id ? "bg-white text-ink" : "bg-white/15 text-white"}`}>
+                  {label}
+                  {count > 0 ? <span className="absolute -right-1 -top-1 rounded-full bg-sale px-1.5 text-[10px] text-white">{count}</span> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </header>
+        <div className="mx-auto min-w-0 max-w-5xl px-4 py-4 pb-16 [&_form]:min-w-0 [&_input]:max-w-full [&_input]:min-w-0 [&_select]:max-w-full [&_textarea]:max-w-full">
+          {tab === "platform" ? <PlatformForm platform={platform} /> : null}
+          {tab === "stores" ? <StoresPanel stores={stores} /> : null}
+          {tab === "notifications" && mode === "platform" ? <ApplicationsPanel applications={applications} /> : null}
+          {(tab === "notifications" && mode === "store") || tab === "alerts" ? (
+            <section className="rounded-2xl bg-white p-4">
+              <h2 className="text-lg font-medium">Notifications</h2>
+              {alerts.length === 0 ? <p className="mt-2 text-sm text-muted">No new sold-out alerts.</p> : (
+                <ul className="mt-3 space-y-2 text-sm">
+                  {alerts.map((alert) => {
+                    const product = data?.products.find((item) => item.id === alert.productId);
+                    return (
+                      <li key={alert.id} className="flex items-center gap-2 border-t border-line py-2">
+                        <SeenDot id={alert.id} />
+                        <span>{[product?.name, alert.colorName, alert.sizeLabel].filter(Boolean).join(" · ")} is sold out</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          ) : null}
+          {tab === "all-orders" ? <OrdersPanel showStore /> : null}
+          {data && tab === "dashboard" ? <DashboardPanel data={data} alerts={alerts} orderStats={orderStats} pushStoreId={pushStoreId} /> : null}
+          {data && tab === "store" ? (
+            <div className="space-y-4">
+              <StoreForm data={data} allowPassword={mode === "store"} />
+              <Accordion title="Business rules">
+                <FooterEditor data={data} embedded />
+              </Accordion>
+            </div>
+          ) : null}
+          {data && tab === "orders" ? <OrdersPanel storeId={data.storeId} /> : null}
+          {data && tab === "catalogue" ? (
+            <div className="space-y-4">
+              <Accordion title="Announcement"><AnnouncementForm data={data} /></Accordion>
+              <Accordion title="Heroes"><HeroForms data={data} /></Accordion>
+              <Accordion title="Highlight strip"><Highlights data={data} /></Accordion>
+              <Accordion title="Main categories"><Categories data={data} /></Accordion>
+            </div>
+          ) : null}
+          {data && tab === "products" ? <Products data={data} alerts={alerts} /> : null}
+          {tab === "onboarding" ? <OnboardingPanel /> : null}
+          <footer className="mt-10 border-t border-line pt-4 text-sm text-muted">
+            Need any assistance? Contact us at{" "}
+            <a className="underline underline-offset-4" href="mailto:customsnairobi@gmail.com">customsnairobi@gmail.com</a>
+            {" "}or{" "}
+            <a className="underline underline-offset-4" href="https://wa.me/254704416016" target="_blank" rel="noopener noreferrer">0704416016</a>.
+          </footer>
         </div>
-      ) : null}
-      <div className="flex gap-2 overflow-x-auto px-4 py-3">
-        {tabs.map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-full px-4 py-2 text-sm ${tab === id ? "bg-ink text-white" : "bg-white"}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="mx-auto min-w-0 max-w-3xl px-4 pb-16 [&_form]:min-w-0 [&_input]:max-w-full [&_input]:min-w-0 [&_select]:max-w-full [&_textarea]:max-w-full">
-        {tab === "platform" ? <PlatformForm platform={platform} /> : null}
-        {tab === "stores" ? <StoresPanel stores={stores} /> : null}
-        {tab === "all-orders" ? <OrdersPanel showStore /> : null}
-        {data && tab === "store" ? <StoreForm data={data} allowPassword={mode === "store"} /> : null}
-        {data && tab === "orders" ? <OrdersPanel storeId={data.storeId} /> : null}
-        {data && tab === "heroes" ? <HeroForms data={data} /> : null}
-        {data && tab === "highlights" ? <Highlights data={data} /> : null}
-        {data && tab === "categories" ? <Categories data={data} /> : null}
-        {data && tab === "products" ? <Products data={data} /> : null}
       </div>
     </div>
   );
@@ -125,6 +241,53 @@ function savedNote(result: { error?: string } | { ok: true }) {
 function Notice({ message }: { message: string | null }) {
   if (!message) return null;
   return <p className="mt-3 text-sm text-sale">{message}</p>;
+}
+
+function AnnouncementForm({ data }: { data: StorefrontPayload }) {
+  const router = useRouter();
+  const [announcement, setAnnouncement] = useState(data.settings.announcement);
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const result = await saveSettingsAction({
+          storeId: data.storeId,
+          companyName: data.settings.companyName,
+          logo: data.settings.logo,
+          description: data.settings.description,
+          socialUrl: data.settings.socialUrl,
+          announcement,
+          pickupAddress: data.settings.pickupAddress,
+          deliveryFeeKes: data.settings.deliveryFeeCents / 100,
+          freeDeliveryThresholdKes: data.settings.freeDeliveryThresholdCents / 100,
+          phone: data.settings.phone,
+          email: data.settings.email,
+          location: data.settings.location,
+          hoursDays: data.settings.hoursDays,
+          hoursOpen: data.settings.hoursOpen,
+          hoursClose: data.settings.hoursClose,
+          pickupEnabled: data.settings.pickupEnabled,
+          deliveryEnabled: data.settings.deliveryEnabled,
+          mtaaniAccount: data.settings.mtaaniAccount,
+          mpesaShortcode: data.settings.mpesaShortcode,
+          mpesaPasskey: data.settings.mpesaPasskey,
+          mpesaConsumerKey: data.settings.mpesaConsumerKey,
+          mpesaConsumerSecret: data.settings.mpesaConsumerSecret,
+          stripePublishableKey: data.settings.stripePublishableKey,
+          stripeSecretKey: data.settings.stripeSecretKey,
+          password: "",
+        });
+        setMessage(savedNote(result));
+        router.refresh();
+      }}
+    >
+      <label className="block text-sm">Announcement<span className="mt-1 block text-xs font-normal text-muted">One announcement per line. They take turns in the announcement bar in the homepage.</span><textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={4} value={announcement} onChange={(event) => setAnnouncement(event.target.value)} /></label>
+      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save announcement</button>
+      <Notice message={message} />
+    </form>
+  );
 }
 
 function PlatformForm({ platform }: { platform: { companyName: string; logo: string } }) {
@@ -176,6 +339,11 @@ function StoreRegistryForm({ store }: { store?: ManagedStore }) {
     freeDeliveryThresholdKes: String((store?.freeDeliveryThresholdCents ?? 0) / 100),
     subscriptionStatus: store?.subscriptionStatus ?? "trial",
     adminAccessEnabled: store?.adminAccessEnabled ?? true,
+    plan: store?.plan ?? "link",
+    phone: store?.phone ?? "",
+    email: store?.email ?? "",
+    location: store?.location ?? "",
+    setupPaid: store?.setupPaid ?? false,
     password: "",
   });
   const [message, setMessage] = useState<string | null>(null);
@@ -205,6 +373,17 @@ function StoreRegistryForm({ store }: { store?: ManagedStore }) {
       <label className="block text-sm">Pickup address<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.pickupAddress} onChange={(event) => setForm({ ...form, pickupAddress: event.target.value })} /></label>
       <label className="block text-sm">Delivery fee (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.deliveryFeeKes} onChange={(event) => setForm({ ...form, deliveryFeeKes: event.target.value })} /></label>
       <label className="block text-sm">Free delivery from (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.freeDeliveryThresholdKes} onChange={(event) => setForm({ ...form, freeDeliveryThresholdKes: event.target.value })} /></label>
+      <label className="block text-sm">Package
+        <select className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.plan} onChange={(event) => setForm({ ...form, plan: event.target.value })}>
+          <option value="link">Link</option>
+          <option value="growth">Growth</option>
+          <option value="custom">Custom Brand</option>
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={form.setupPaid} onChange={(event) => setForm({ ...form, setupPaid: event.target.checked })} />
+        Setup fee paid
+      </label>
       <label className="block text-sm">Subscription
         <select className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.subscriptionStatus} onChange={(event) => setForm({ ...form, subscriptionStatus: event.target.value })}>
           <option value="trial">Trial</option>
@@ -218,7 +397,23 @@ function StoreRegistryForm({ store }: { store?: ManagedStore }) {
         Admin access enabled
       </label>
       <label className="block text-sm">{store ? "New password" : "Studio password"}<input type="password" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
-      <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">{store ? "Save store" : "Register store"}</button>
+      <div className="flex flex-wrap gap-3">
+        <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">{store ? "Save store" : "Register store"}</button>
+        {store ? (
+          <button
+            type="button"
+            className="rounded-full border border-sale px-5 py-2 text-sm text-sale"
+            onClick={async () => {
+              if (!window.confirm(`Delete ${store.companyName} and everything saved for this store?`)) return;
+              const result = await deleteStoreAction(store.id);
+              setMessage(savedNote(result));
+              if ("ok" in result) router.push("/admin");
+            }}
+          >
+            Delete store
+          </button>
+        ) : null}
+      </div>
       <Notice message={message} />
     </form>
   );
@@ -236,11 +431,26 @@ function StoreForm({ data, allowPassword }: { data: StorefrontPayload; allowPass
     deliveryFeeKes: String(data.settings.deliveryFeeCents / 100),
     freeDeliveryThresholdKes: String(data.settings.freeDeliveryThresholdCents / 100),
     password: "",
+    phone: data.settings.phone,
+    email: data.settings.email,
+    location: data.settings.location,
+    hoursDays: data.settings.hoursDays,
+    hoursOpen: data.settings.hoursOpen,
+    hoursClose: data.settings.hoursClose,
+    pickupEnabled: data.settings.pickupEnabled,
+    deliveryEnabled: data.settings.deliveryEnabled,
+    mtaaniAccount: data.settings.mtaaniAccount,
+    mpesaShortcode: data.settings.mpesaShortcode,
+    mpesaPasskey: data.settings.mpesaPasskey,
+    mpesaConsumerKey: data.settings.mpesaConsumerKey,
+    mpesaConsumerSecret: data.settings.mpesaConsumerSecret,
+    stripePublishableKey: data.settings.stripePublishableKey,
+    stripeSecretKey: data.settings.stripeSecretKey,
   });
   const [message, setMessage] = useState<string | null>(null);
   return (
     <form
-      className="space-y-3 min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5"
+      className="space-y-3"
       onSubmit={async (event) => {
         event.preventDefault();
         const result = await saveSettingsAction({
@@ -254,16 +464,40 @@ function StoreForm({ data, allowPassword }: { data: StorefrontPayload; allowPass
         router.refresh();
       }}
     >
-      <h2 className="text-lg font-medium">Store</h2>
-      <label className="block text-sm">Company name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })} /></label>
-      <ImageField label="Logo" value={form.logo} onChange={(logo) => setForm({ ...form, logo })} />
-      <label className="block text-sm">Description<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
-      <label className="block text-sm">Social page<span className="mt-1 block text-xs font-normal text-muted">The shop name in the copyright links here.</span><input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.socialUrl} onChange={(event) => setForm({ ...form, socialUrl: event.target.value })} placeholder="https://instagram.com/yourshop" /></label>
-      <label className="block text-md">Announcement<span className="mt-1 block text-xs font-normal text-muted">One announcement per line. They take turns in the bar.</span><textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={4} value={form.announcement} onChange={(event) => setForm({ ...form, announcement: event.target.value })} /></label>
-      <label className="block text-sm">Pickup address<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.pickupAddress} onChange={(event) => setForm({ ...form, pickupAddress: event.target.value })} /></label>
-      <label className="block text-sm">Delivery fee (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.deliveryFeeKes} onChange={(event) => setForm({ ...form, deliveryFeeKes: event.target.value })} /></label>
-      <label className="block text-sm">Free delivery from (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.freeDeliveryThresholdKes} onChange={(event) => setForm({ ...form, freeDeliveryThresholdKes: event.target.value })} /></label>
-      {allowPassword ? <label className="block text-sm">New password<input type="password" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label> : null}
+      <Accordion title="Business profile">
+        <div className="space-y-3">
+          <label className="block text-sm">Company name<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.companyName} onChange={(event) => setForm({ ...form, companyName: event.target.value })} /></label>
+          <ImageField label="Logo" value={form.logo} onChange={(logo) => setForm({ ...form, logo })} />
+          <label className="block text-sm">Phone<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+          <label className="block text-sm">Email<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+          <label className="block text-sm">Location<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} /></label>
+          <label className="block text-sm">Working days<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.hoursDays} onChange={(event) => setForm({ ...form, hoursDays: event.target.value })} placeholder="mon,tue,wed,thu,fri,sat" /></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm">Opens<input type="time" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.hoursOpen} onChange={(event) => setForm({ ...form, hoursOpen: event.target.value })} /></label>
+            <label className="block text-sm">Closes<input type="time" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.hoursClose} onChange={(event) => setForm({ ...form, hoursClose: event.target.value })} /></label>
+          </div>
+          <label className="block text-sm">Description<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+          <label className="block text-sm">Social page<span className="mt-1 block text-xs font-normal text-muted">The shop name in the copyright links here.</span><input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.socialUrl} onChange={(event) => setForm({ ...form, socialUrl: event.target.value })} placeholder="https://instagram.com/yourshop" /></label>
+          <label className="block text-sm">Pickup address<textarea className="mt-1 w-full rounded-lg border border-line px-3 py-2" rows={2} value={form.pickupAddress} onChange={(event) => setForm({ ...form, pickupAddress: event.target.value })} /></label>
+          {allowPassword ? <label className="block text-sm">Set new password<input type="password" className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label> : null}
+        </div>
+      </Accordion>
+      <Accordion title="Payment details">
+        <div className="space-y-3">
+          <label className="block text-sm">Delivery fee (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.deliveryFeeKes} onChange={(event) => setForm({ ...form, deliveryFeeKes: event.target.value })} /></label>
+          <label className="block text-sm">Free delivery from (KES)<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.freeDeliveryThresholdKes} onChange={(event) => setForm({ ...form, freeDeliveryThresholdKes: event.target.value })} /></label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.pickupEnabled} onChange={(event) => setForm({ ...form, pickupEnabled: event.target.checked })} /> Offer pickup</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.deliveryEnabled} onChange={(event) => setForm({ ...form, deliveryEnabled: event.target.checked })} /> Offer delivery</label>
+          <label className="block text-sm">Pickup Mtaani account<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.mtaaniAccount} onChange={(event) => setForm({ ...form, mtaaniAccount: event.target.value })} placeholder="Leave blank until this shop has an account" /></label>
+          <label className="block text-sm">Till or paybill<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.mpesaShortcode} onChange={(event) => setForm({ ...form, mpesaShortcode: event.target.value })} /></label>
+          <label className="block text-sm">Passkey<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.mpesaPasskey} onChange={(event) => setForm({ ...form, mpesaPasskey: event.target.value })} /></label>
+          <label className="block text-sm">Consumer key<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.mpesaConsumerKey} onChange={(event) => setForm({ ...form, mpesaConsumerKey: event.target.value })} /></label>
+          <label className="block text-sm">Consumer secret<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.mpesaConsumerSecret} onChange={(event) => setForm({ ...form, mpesaConsumerSecret: event.target.value })} /></label>
+          <h3 className="pt-2 text-sm font-medium">Card for this shop</h3>
+          <label className="block text-sm">Publishable key<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.stripePublishableKey} onChange={(event) => setForm({ ...form, stripePublishableKey: event.target.value })} /></label>
+          <label className="block text-sm">Secret key<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.stripeSecretKey} onChange={(event) => setForm({ ...form, stripeSecretKey: event.target.value })} /></label>
+        </div>
+      </Accordion>
       <button className="rounded-full bg-ink px-5 py-2 text-sm text-white" type="submit">Save store</button>
       <Notice message={message} />
     </form>
@@ -371,8 +605,7 @@ function Highlights({ data }: { data: StorefrontPayload }) {
   const [message, setMessage] = useState<string | null>(null);
   const items = [...data.highlights].sort((a, b) => a.sort - b.sort);
   return (
-    <div className="space-y-4 min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
-      <h2 className="text-lg font-medium">Highlight strip</h2>
+    <div className="space-y-4 min-w-0">
       {items.map((item, index) => (
         <div key={item.id} className="flex items-center gap-3 border-t border-line py-3">
           <MediaImage src={item.image} alt="" className="h-20 w-16 object-cover" />
@@ -439,8 +672,7 @@ function Categories({ data }: { data: StorefrontPayload }) {
   const atCap = data.departments.length >= MAX_DEPARTMENTS;
   const departmentIds = data.departments.map((entry) => entry.id);
   return (
-    <div className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
-      <h2 className="text-lg font-medium">Main categories</h2>
+    <div className="min-w-0">
       <p className="mt-1 text-sm text-muted">{data.departments.length} of {MAX_DEPARTMENTS}. Up and Down set the order on the shop. The shop only shows a category that has products.</p>
       {data.departments.map((entry, index) => {
         const subs = data.categories.filter((category) => category.department === entry.slug);
@@ -579,6 +811,10 @@ function Categories({ data }: { data: StorefrontPayload }) {
   );
 }
 
+function alertsFor(alerts: StockAlert[], colorName: string, sizeLabel: string, productId?: string) {
+  return alerts.filter((alert) => alert.productId === productId && alert.colorName === colorName && alert.sizeLabel === sizeLabel);
+}
+
 function blankProduct(data: StorefrontPayload): ProductDraft {
   const department = data.departments[0]?.slug ?? "";
   const category = data.categories.find((item) => item.department === department)?.name ?? "";
@@ -648,12 +884,12 @@ function fromProduct(product: Product): ProductDraft {
   };
 }
 
-function Products({ data }: { data: StorefrontPayload }) {
+function Products({ data, alerts }: { data: StorefrontPayload; alerts: StockAlert[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState<ProductDraft | null>(null);
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [visibilityError, setVisibilityError] = useState<string | null>(null);
-  if (editing) return <ProductForm data={data} initial={editing} onDone={() => setEditing(null)} />;
+  if (editing) return <ProductForm data={data} initial={editing} alerts={alerts} onDone={() => setEditing(null)} />;
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl bg-white p-4 sm:p-5">
       <div className="flex items-center justify-between">
@@ -668,7 +904,12 @@ function Products({ data }: { data: StorefrontPayload }) {
           return (
             <li key={product.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
               <div className="min-w-0">
-                <p className="break-words font-medium">{product.name}</p>
+                <p className="break-words font-medium">
+                  {product.name}{" "}
+                  {alerts.filter((alert) => alert.productId === product.id).map((alert) => (
+                    <SeenDot key={alert.id} id={alert.id} />
+                  ))}
+                </p>
                 <label className="mt-1 flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -740,7 +981,7 @@ function imagesFromGroups(groups: ImageGroup[]) {
   return rows.length > 0 ? rows : [{ image: "", alt: "", colorName: null }];
 }
 
-function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initial: ProductDraft; onDone: () => void }) {
+function ProductForm({ data, initial, alerts, onDone }: { data: StorefrontPayload; initial: ProductDraft; alerts: StockAlert[]; onDone: () => void }) {
   const router = useRouter();
   const [form, setForm] = useState(initial);
   const [imageGroups, setImageGroups] = useState(() =>
@@ -795,7 +1036,7 @@ function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initi
         setForm({ ...form, name });
         setImageGroups((current) => current.map((group) => (group.alt.trim() === "" || group.alt === previous ? { ...group, alt: name } : group)));
       }} /></label>
-      <label className="block text-sm">Subtitle<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></label>
+      <label className="block text-sm">Subtitle<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" placeholder="optional" value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></label>
       <label className="block text-sm">Price in KES<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.priceKes} onChange={(event) => setForm({ ...form, priceKes: event.target.value })} /></label>
       <label className="block text-sm">Compare-at price in KES<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.compareAtKes} onChange={(event) => setForm({ ...form, compareAtKes: event.target.value })} /></label>
       <label className="flex items-center gap-2 text-sm">
@@ -803,7 +1044,7 @@ function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initi
         Members only
       </label>
       <p className="text-sm text-muted">Members pay the set price. Everyone else pays the compare-at price.</p>
-      <label className="block text-sm">Badge<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.badge} onChange={(event) => setForm({ ...form, badge: event.target.value })} /></label>
+      <label className="block text-sm">Badge<input className="mt-1 w-full rounded-lg border border-line px-3 py-2" placeholder="optional" value={form.badge} onChange={(event) => setForm({ ...form, badge: event.target.value })} /></label>
       <label className="block text-sm">Gender
         <select className="mt-1 w-full rounded-lg border border-line px-3 py-2" value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value as Gender })}>
           <option value="men">Men</option>
@@ -872,9 +1113,12 @@ function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initi
       <div>
         <p className="text-sm font-medium">Stock by colour and size</p>
         <p className="mt-1 text-xs text-muted">Available to sell for that colour and size. Checkout will not sell more than this. An unpaid checkout holds the quantity, and cancelling the order puts it back.</p>
-        {stockCombinations(form.colors, form.sizes, form.stock).map((row) => (
-          <label key={`${row.colorName}|${row.sizeLabel}`} className="mt-2 grid grid-cols-1 items-center gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_6rem]">
-            <span>{[row.colorName, row.sizeLabel].filter(Boolean).join(" / ") || "Default"}</span>
+        {stockCombinations(form.colors, form.sizes, form.stock).filter((row) => !row.hidden).map((row) => (
+          <div key={`${row.colorName}|${row.sizeLabel}`} className="mt-2 grid grid-cols-1 items-center gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_6rem_auto]">
+            <span className="flex items-center gap-2">
+              {[row.colorName, row.sizeLabel].filter(Boolean).join(" / ") || "Default"}
+              {alertsFor(alerts, row.colorName, row.sizeLabel, form.id).map((alert) => <SeenDot key={alert.id} id={alert.id} />)}
+            </span>
             <input
               type="number"
               min={0}
@@ -890,7 +1134,21 @@ function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initi
                 });
               }}
             />
-          </label>
+            <button
+              type="button"
+              className="text-sm underline"
+              onClick={() => {
+                setForm((current) => {
+                  const next = stockCombinations(current.colors, current.sizes, current.stock).map((entry) =>
+                    entry.colorName === row.colorName && entry.sizeLabel === row.sizeLabel ? { ...entry, hidden: true, quantity: 0 } : entry,
+                  );
+                  return { ...current, stock: next };
+                });
+              }}
+            >
+              Remove
+            </button>
+          </div>
         ))}
       </div>
 
@@ -950,6 +1208,35 @@ function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initi
               </div>
             ))}
             <div className="flex flex-wrap gap-4">
+            <label className={`inline-flex cursor-pointer items-center rounded-lg border-2 border-ink bg-white px-3 py-2 text-sm font-medium ${colorFull ? "pointer-events-none opacity-40" : ""}`}>
+              Choose files
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                disabled={colorFull}
+                onChange={(event) => {
+                  const files = [...(event.target.files ?? [])];
+                  event.target.value = "";
+                  void (async () => {
+                    const room = MAX_PRODUCT_IMAGES - photosForColor(imageGroups, group.colorName);
+                    const chosen = files.slice(0, Math.max(0, room));
+                    const uploaded: string[] = [];
+                    for (const file of chosen) uploaded.push(await uploadImageFile(file));
+                    if (uploaded.length === 0) return;
+                    setImageGroups((current) =>
+                      current.map((entry, item) => {
+                        if (item !== index) return entry;
+                        const links = [...entry.links.filter(Boolean), ...uploaded].slice(0, MAX_PRODUCT_IMAGES);
+                        return { ...entry, links: links.length > 0 ? links : [""] };
+                      }),
+                    );
+                  })();
+                }}
+              />
+            </label>
+            <div className="flex flex-wrap gap-4">
               <button
                 type="button"
                 className="text-sm underline disabled:opacity-40"
@@ -972,6 +1259,7 @@ function ProductForm({ data, initial, onDone }: { data: StorefrontPayload; initi
               >
                 Remove images
               </button>
+            </div>
             </div>
           </div>
           );

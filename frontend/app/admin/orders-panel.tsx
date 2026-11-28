@@ -179,7 +179,10 @@ export function OrdersPanel({ storeId = null, showStore = false }: { storeId?: s
           {visible.map((order) => (
             <article key={order.id} className="border-t border-line pt-4 text-sm leading-6">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-medium">{order.orderNumber}{showStore ? ` · ${order.storeName}` : ""}</p>
+                <p className="flex items-center gap-2 font-medium">
+                  {order.status === "placed" ? <span className="inline-block h-2.5 w-2.5 rounded-full bg-sale" aria-label="New order" /> : null}
+                  {order.orderNumber}{showStore ? ` · ${order.storeName}` : ""}
+                </p>
                 <p>{orderStatusLabel(order.status)}</p>
               </div>
               <p className="text-muted">{new Date(order.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })}</p>
@@ -190,7 +193,11 @@ export function OrdersPanel({ storeId = null, showStore = false }: { storeId?: s
               <p>
                 {order.fulfillment === "pickup"
                   ? `Pickup · ${order.pickupAddress ?? "Store"}`
-                  : `Delivery · ${[order.area, order.street].filter(Boolean).join(", ")}`}
+                  : order.fulfillment === "mtaani"
+                    ? `Pickup Mtaani · ${[order.area, order.street].filter(Boolean).join(", ")}`
+                    : order.fulfillment === "details"
+                      ? `Delivery details · ${[order.area, order.street].filter(Boolean).join(", ")}`
+                      : `Delivery · ${[order.area, order.street].filter(Boolean).join(", ")}`}
               </p>
               {order.note ? <p>Note: {order.note}</p> : null}
               <ul className="mt-2 space-y-1">

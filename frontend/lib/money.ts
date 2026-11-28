@@ -19,10 +19,10 @@ export function shillingsFromCents(cents: number) {
 
 export function deliveryFeeFor(
   subtotalCents: number,
-  fulfillment: "delivery" | "pickup",
+  fulfillment: string,
   settings: { deliveryFeeCents: number; freeDeliveryThresholdCents: number },
 ) {
-  if (fulfillment === "pickup" || subtotalCents <= 0) return 0;
+  if (fulfillment !== "delivery" || subtotalCents <= 0) return 0;
   if (subtotalCents >= settings.freeDeliveryThresholdCents) return 0;
   return settings.deliveryFeeCents;
 }

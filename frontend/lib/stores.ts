@@ -11,10 +11,18 @@ const RESERVED_SLUGS = new Set([
   "robots.txt",
   "sitemap.xml",
   "media",
+  "shops",
+  "packages",
 ]);
 
-export function isPublicSubscription(status: string) {
-  return status === "trial" || status === "active";
+const GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isPublicSubscription(status: string, trialEndsAt?: Date | string | null, now = Date.now()) {
+  if (status === "trial" || status === "active") return true;
+  if (status !== "past_due" || !trialEndsAt) return false;
+  const end = new Date(trialEndsAt).getTime();
+  if (Number.isNaN(end)) return false;
+  return now < end + GRACE_MS;
 }
 
 export function isValidStoreSlug(slug: string) {

@@ -5,23 +5,27 @@ import { currentMember } from "@/lib/members";
 import { createPendingOrder, markFailed, OrderError } from "@/lib/orders";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
-import { stripeConfigured, getStripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
+import { getStoreBySlug } from "@/lib/db/queries";
+import { cardAccount } from "@/lib/shop-methods";
 import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    if (!stripeConfigured()) throw new OrderError("Card payments are not configured yet", 503);
     const ip = clientIp(request.headers.get("x-forwarded-for"));
     if (!rateLimit(`stripe:${ip}`, 20, 10 * 60 * 1000)) {
       throw new OrderError("Too many payment attempts. Wait a few minutes and try again.", 429);
     }
     const input = checkoutSchema.parse(await request.json());
+    const store = await getStoreBySlug(input.storeSlug);
+    const card = store ? cardAccount(store) : null;
+    if (!card) throw new OrderError("Card payments are not configured for this shop", 503);
     const member = await currentMember(input.storeSlug);
     const order = await createPendingOrder(input, "card", Boolean(member));
     try {
-      const stripe = getStripe();
+      const stripe = getStripe(card.secret);
       const intent = await stripe.paymentIntents.create({
         amount: order.totalCents,
         currency: "kes",
@@ -35,6 +39,7 @@ export async function POST(request: Request) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         clientSecret: intent.client_secret,
+        publishableKey: card.publishable,
         totalCents: order.totalCents,
         email: order.email,
       });

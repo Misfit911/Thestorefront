@@ -11,6 +11,7 @@ import {
   addHero,
   addHighlight,
   createStore,
+  deleteStore,
   deleteCategory,
   deleteDepartment,
   reorderCategories,
@@ -27,7 +28,9 @@ import {
   updateStoreRegistry,
   upsertProduct,
 } from "@/lib/db/mutations";
+import { createStoreFromApplication } from "@/lib/db/applications";
 import { getStoreById, getStoreBySlug } from "@/lib/db/queries";
+import { replaceFooter, replaceHelp } from "@/lib/db/store-content";
 import { OrderError, updateOrderStatus } from "@/lib/orders";
 import { verifyPassword } from "@/lib/passwords";
 import { reconcilePendingPayments } from "@/lib/reconcile-run";
@@ -167,6 +170,17 @@ export async function updateStoreAction(input: unknown) {
     return { ok: true as const };
   } catch (error) {
     return editError(error, "The store could not be saved");
+  }
+}
+
+export async function deleteStoreAction(id: string) {
+  await requirePlatform();
+  try {
+    const slug = await deleteStore(id);
+    refresh(slug);
+    return { ok: true as const };
+  } catch (error) {
+    return editError(error, "The store could not be deleted");
   }
 }
 
@@ -362,4 +376,35 @@ export async function reconcilePaymentsAction() {
     console.error(error);
     return { error: "Payment check could not be completed" };
   }
+}
+
+export async function createStoreFromApplicationAction(applicationId: string, password: string) {
+  await requirePlatform();
+  try {
+    const created = await createStoreFromApplication(applicationId, password);
+    refresh(created.slug);
+    return { ok: true as const, slug: created.slug };
+  } catch (error) {
+    return editError(error, "The store could not be created");
+  }
+}
+
+export async function saveFooterAction(storeId: string, items: { kind: string; title: string; body: string }[]) {
+  await requireStoreEditor(storeId);
+  await replaceFooter(
+    storeId,
+    items.filter((item) => item.title.trim()).map((item) => ({ ...item, title: item.title.trim(), body: item.body.trim() })),
+  );
+  refresh((await getStoreById(storeId))?.slug);
+  return { ok: true as const };
+}
+
+export async function saveHelpAction(storeId: string, items: { question: string; answer: string }[]) {
+  await requireStoreEditor(storeId);
+  await replaceHelp(
+    storeId,
+    items.filter((item) => item.question.trim() && item.answer.trim()).map((item) => ({ question: item.question.trim(), answer: item.answer.trim() })),
+  );
+  refresh((await getStoreById(storeId))?.slug);
+  return { ok: true as const };
 }

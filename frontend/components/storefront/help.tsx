@@ -8,6 +8,7 @@ import { BackLink } from "@/components/storefront/sheet";
 export function HelpSheet() {
   const store = useStore();
   const guide = helpGuide(store.data.settings);
+  const items = store.data.help.length > 0 ? store.data.help : guide.items;
 
   return (
     <div className="px-5 py-5">
@@ -24,7 +25,7 @@ export function HelpSheet() {
         </button>
       </div>
       <div className="mt-8 border-b border-line">
-        {guide.items.map((item) => (
+        {items.map((item) => (
           <details key={item.question} className="group border-t border-line">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-base font-medium [&::-webkit-details-marker]:hidden">
               {item.question}

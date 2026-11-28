@@ -1,0 +1,23 @@
+create the homepage of customs kenya in the root directory which explains about the company and how businesses can get the tier levels for free. when the tier is chosen a form appears which allows a business to sign up with their business name, Physical business location, contact information and social media links. Working days and hours, Business registration details where applicable (optional), Relevant business identification and tax details where applicable(optional). the business registration, identification and tax details will later be used for manual business verification. make the form look easy to fill so that a user is not overwhelmed and leaves the form. once the form is filled, a notification is sent to the platform admin notifications tab. in the notification row, there should be a create store button which creates a new store with that business name and details. the business working days and hours will be used to create alerts/notifications.
+
+use the ecommerce service packages screenshot to create the subsription tiers. create a html, css and JS file for the packages in the packages folder in public
+
+
+
+
+
+
+i also want to integrate delivery methods such as pick up mtaani. is there a way you can design it such that when i want to integrate a new payment method i can only add the API keys in .env.local?
+
+
+
+make each store have its own footer. the footer items (help and its questions, guides, terms of use, terms of sale, privacy) can be edited from a footer tab in the platform admin studio and the store admin studio. also allow addition and subtraction of footer items and help questions. add contact to the footer which opens up and renders the contact details. let the contact details fields (PHONE AND EMAIL) be part of the store information.
+
+
+I want to use PWA for the admin studio notifications. the sellers can install the web app admin page in their homescreen then they would receive real time notifications on their phones. notifications should be of new orders and out of stock products. which other notifications should be sent? remove the outlook email that receives orders. 
+
+Studio is a long form, not a phone tool. edit the admin studio to have this layout in desktop. for the mobile screen, make the header and tabs sticky at the top and scrollable to the right. add indicators with numbers at the top right of the orders and products tabs which show the number of notifications for new orders and products which have been sold out. there should also be indicators in the new order rows. the indicator disappears from the row only after it is marked as received. there should be indicators in the specific product with the sold out item and the specific stock which is sold out. the sold out indicator disappears 3 seconds after the indicator is visible on the screen. the notifications and indicators are independent of each store and the platform admin receives all notifications and indicators. add reminders for orders and stocks which are still active. condense the contents in the admin studio so that it is user friendly. similar sections should be grouped together and relevant tabs created for them if needed (for example store/business profile).
+
+let only the hero image field be required for a hero to be added.
+
+add cookie policies pop up overlay in the homepage and all the stores which pops up from the bottom of the screen and stays at the bottom of the screen. let it be short in height and allows a user to accept all cookies or allow only necessary cookies.

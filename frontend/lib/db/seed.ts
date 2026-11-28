@@ -33,13 +33,13 @@ async function main() {
   await db.insert(schema.platformSettings).values({
     id: "platform",
     companyName: "Nike Nairobi",
-    logo: "/nike_logo.jpg",
+    logo: "/customs_kenya_logo.png",
   });
   await db.insert(schema.stores).values({
     id: NIKE_STORE_ID,
     slug: "nike",
     companyName: "Nike Nairobi",
-    logo: "/nike_logo.jpg",
+    logo: "/customs_kenya_logo.png",
     description: "Nike store in Nairobi.",
     socialUrl: "",
     announcement:

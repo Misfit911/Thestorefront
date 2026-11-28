@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { Studio } from "@/app/admin/studio";
 import { readStoreSession, STORE_ADMIN_COOKIE } from "@/lib/auth";
-import { getAdminCatalog, getStoreBySlug } from "@/lib/db/queries";
+import { runDueAlerts } from "@/lib/alerts";
+import { countPlacedOrders, getAdminCatalog, getStoreBySlug, listUnseenStockAlerts, storeOrderStats } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,8 +18,14 @@ export default async function StoreAdminPage({ params }: { params: Promise<{ slu
     redirect(`/${slug}/admin/login${store.adminAccessEnabled ? "" : "?disabled=1"}`);
   }
   try {
-    const data = await getAdminCatalog(store.id);
-    return <Studio mode="store" platform={{ companyName: store.companyName, logo: store.logo }} stores={[]} data={data} />;
+    await runDueAlerts();
+    const [data, alerts, placedCount, orderStats] = await Promise.all([
+      getAdminCatalog(store.id),
+      listUnseenStockAlerts(store.id),
+      countPlacedOrders(store.id),
+      storeOrderStats(store.id),
+    ]);
+    return <Studio mode="store" platform={{ companyName: store.companyName, logo: store.logo }} stores={[]} data={data} alerts={alerts} placedCount={placedCount} orderStats={orderStats} />;
   } catch (error) {
     console.error(error);
     return (

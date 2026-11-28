@@ -6,7 +6,9 @@ import { currentMember } from "@/lib/members";
 import { createPendingOrder, markFailed, mpesaAmount, OrderError } from "@/lib/orders";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
-import { mpesaConfigured, stkPush } from "@/lib/mpesa";
+import { stkPush } from "@/lib/mpesa";
+import { getStoreBySlug } from "@/lib/db/queries";
+import { mpesaAccount } from "@/lib/shop-methods";
 import { normalizeKePhone } from "@/lib/phone";
 import { eq } from "drizzle-orm";
 
@@ -16,22 +18,27 @@ const bodySchema = checkoutSchema.and(z.object({ mpesaPhone: z.string().min(8).m
 
 export async function POST(request: Request) {
   try {
-    if (!mpesaConfigured()) throw new OrderError("M-Pesa is not configured yet", 503);
     const ip = clientIp(request.headers.get("x-forwarded-for"));
     if (!rateLimit(`mpesa:${ip}`, 12, 10 * 60 * 1000)) {
       throw new OrderError("Too many M-Pesa attempts. Wait a few minutes and try again.", 429);
     }
     const input = bodySchema.parse(await request.json());
+    const store = await getStoreBySlug(input.storeSlug);
+    const account = store ? mpesaAccount(store) : null;
+    if (!account) throw new OrderError("M-Pesa is not configured for this shop", 503);
     const phone = normalizeKePhone(input.mpesaPhone);
     if (!phone) throw new OrderError("Enter the Safaricom number that should receive the M-Pesa prompt");
     const member = await currentMember(input.storeSlug);
     const order = await createPendingOrder(input, "mpesa", Boolean(member));
     try {
-      const push = await stkPush({
-        phone,
-        amountShillings: mpesaAmount(order.totalCents),
-        accountReference: order.orderNumber.replace(/-/g, ""),
-      });
+      const push = await stkPush(
+        {
+          phone,
+          amountShillings: mpesaAmount(order.totalCents),
+          accountReference: order.orderNumber.replace(/-/g, ""),
+        },
+        account,
+      );
       await db
         .update(orders)
         .set({

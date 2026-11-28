@@ -18,13 +18,13 @@ export const checkoutSchema = z
     fullName: z.string().trim().min(2).max(120),
     email: z.string().trim().email().max(200),
     phone: z.string().trim().min(8).max(20),
-    fulfillment: z.enum(["delivery", "pickup"]),
+    fulfillment: z.enum(["delivery", "pickup", "details", "mtaani"]),
     area: z.string().trim().max(120).optional().default(""),
     street: z.string().trim().max(160).optional().default(""),
     note: z.string().trim().max(300).optional().default(""),
   })
   .superRefine((value, context) => {
-    if (value.fulfillment === "delivery") {
+    if (value.fulfillment !== "pickup") {
       if (!value.area) context.addIssue({ code: "custom", path: ["area"], message: "Area or estate is required" });
       if (!value.street) context.addIssue({ code: "custom", path: ["street"], message: "Street or building is required" });
     }
@@ -69,11 +69,12 @@ export const productInputSchema = z.object({
   ),
   stock: z
     .array(
-      z.object({
-        colorName: z.string().trim().max(40).default(""),
-        sizeLabel: z.string().trim().max(40).default(""),
-        quantity: z.number().int().min(0).max(100_000),
-      }),
+        z.object({
+          colorName: z.string().trim().max(40).default(""),
+          sizeLabel: z.string().trim().max(40).default(""),
+          quantity: z.number().int().min(0).max(100_000),
+          hidden: z.boolean().optional().default(false),
+        }),
     )
     .max(400),
   images: z
@@ -165,13 +166,34 @@ export const settingsInputSchema = z.object({
   description: z.string().trim().max(500),
   socialUrl: z.string().trim().max(500),
   announcement: z.string().trim().min(1).max(400),
-  pickupAddress: z.string().trim().min(1).max(400),
+  pickupAddress: z.string().trim().max(400).default(""),
   deliveryFeeKes: z.number().min(0).max(100_000),
   freeDeliveryThresholdKes: z.number().min(0).max(10_000_000),
   password: z.string().min(8).max(200).optional().or(z.literal("")),
+  phone: z.string().trim().max(30).default(""),
+  email: z.string().trim().max(200).default(""),
+  location: z.string().trim().max(200).default(""),
+  hoursDays: z.string().trim().max(80).default("mon,tue,wed,thu,fri,sat"),
+  hoursOpen: z.string().trim().regex(/^\d{2}:\d{2}$/).default("09:00"),
+  hoursClose: z.string().trim().regex(/^\d{2}:\d{2}$/).default("18:00"),
+  pickupEnabled: z.boolean().default(false),
+  deliveryEnabled: z.boolean().default(false),
+  mtaaniAccount: z.string().trim().max(120).default(""),
+  mpesaShortcode: z.string().trim().max(20).default(""),
+  mpesaPasskey: z.string().trim().max(200).default(""),
+  mpesaConsumerKey: z.string().trim().max(200).default(""),
+  mpesaConsumerSecret: z.string().trim().max(200).default(""),
+  stripePublishableKey: z.string().trim().max(200).default(""),
+  stripeSecretKey: z.string().trim().max(200).default(""),
 }).superRefine((value, context) => {
   if (value.socialUrl && !safeWebUrl(value.socialUrl)) {
     context.addIssue({ code: "custom", path: ["socialUrl"], message: "Enter a web address" });
+  }
+  if (value.email && !z.string().email().safeParse(value.email).success) {
+    context.addIssue({ code: "custom", path: ["email"], message: "Enter a valid email address" });
+  }
+  if (value.pickupEnabled && !value.pickupAddress) {
+    context.addIssue({ code: "custom", path: ["pickupAddress"], message: "Add a pickup address" });
   }
 });
 
@@ -192,6 +214,14 @@ const storeFields = {
   freeDeliveryThresholdKes: z.number().min(0).max(10_000_000),
   subscriptionStatus: z.enum(["trial", "active", "past_due", "cancelled"]),
   adminAccessEnabled: z.boolean(),
+  plan: z.enum(["link", "growth", "custom"]).default("link"),
+  phone: z.string().trim().max(30).default(""),
+  email: z.string().trim().max(200).default(""),
+  location: z.string().trim().max(200).default(""),
+  hoursDays: z.string().trim().max(80).default("mon,tue,wed,thu,fri,sat"),
+  hoursOpen: z.string().trim().default("09:00"),
+  hoursClose: z.string().trim().default("18:00"),
+  setupPaid: z.boolean().default(false),
 };
 
 export const storeCreateSchema = z
@@ -229,19 +259,19 @@ export const storeUpdateSchema = z
 export const heroInputSchema = z.object({
   storeId: z.string().min(1),
   id: z.string().min(1),
-  eyebrow: z.string().trim().min(1).max(120),
-  headline: z.string().trim().min(1).max(200),
+  eyebrow: z.string().trim().max(120).default(""),
+  headline: z.string().trim().max(200).default(""),
   image: z.string().trim().min(1).max(500),
-  buttonLabel: z.string().trim().min(1).max(40),
+  buttonLabel: z.string().trim().max(40).default(""),
 });
 
 export const heroCreateSchema = z.object({
   storeId: z.string().min(1),
   department: z.string().trim().max(40).nullable(),
-  eyebrow: z.string().trim().min(1).max(120),
-  headline: z.string().trim().min(1).max(200),
+  eyebrow: z.string().trim().max(120).default(""),
+  headline: z.string().trim().max(200).default(""),
   image: z.string().trim().min(1).max(500),
-  buttonLabel: z.string().trim().min(1).max(40),
+  buttonLabel: z.string().trim().max(40).default(""),
 });
 
 export const departmentInputSchema = z.object({

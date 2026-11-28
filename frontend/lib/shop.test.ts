@@ -183,7 +183,7 @@ test("help answers use the live delivery fee, pickup, and refund window", async 
   const { helpGuide } = await import("./help");
   const guide = helpGuide({
     companyName: "Nike Nairobi",
-    logo: "/nike_logo.jpg",
+    logo: "/customs_kenya_logo.png",
     description: "Nike store in Nairobi.",
     socialUrl: "",
     announcement: "",
@@ -193,6 +193,24 @@ test("help answers use the live delivery fee, pickup, and refund window", async 
     slug: "nike",
     subscriptionStatus: "active",
     adminAccessEnabled: true,
+    phone: "",
+    email: "",
+    location: "",
+    hoursDays: "mon,tue,wed,thu,fri,sat",
+    hoursOpen: "09:00",
+    hoursClose: "18:00",
+    plan: "custom",
+    trialEndsAt: null,
+    setupPaid: true,
+    pickupEnabled: true,
+    deliveryEnabled: true,
+    mtaaniAccount: "",
+    mpesaShortcode: "",
+    mpesaPasskey: "",
+    mpesaConsumerKey: "",
+    mpesaConsumerSecret: "",
+    stripePublishableKey: "",
+    stripeSecretKey: "",
   });
   assert.match(guide.welcome, /Welcome to Nike Nairobi/);
   const joined = guide.items.map((item) => `${item.question} ${item.answer}`).join("\n");
@@ -257,7 +275,7 @@ test("a favicon is cropped to a circle", async () => {
   const { readFile } = await import("node:fs/promises");
   const sharp = (await import("sharp")).default;
   const { circularPng } = await import("./circular-favicon");
-  const png = await circularPng(await readFile(new URL("../public/nike_logo.jpg", import.meta.url)));
+  const png = await circularPng(await readFile(new URL("../public/customs_kenya_logo.png", import.meta.url)));
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const alpha = (x: number, y: number) => data[(y * info.width + x) * info.channels + (info.channels - 1)] ?? 0;
   assert.equal(alpha(0, 0), 0);

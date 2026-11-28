@@ -18,7 +18,29 @@ export type StoreSettings = {
   slug: string;
   subscriptionStatus: string;
   adminAccessEnabled: boolean;
+  phone: string;
+  email: string;
+  location: string;
+  hoursDays: string;
+  hoursOpen: string;
+  hoursClose: string;
+  plan: string;
+  trialEndsAt: string | null;
+  setupPaid: boolean;
+  pickupEnabled: boolean;
+  deliveryEnabled: boolean;
+  mtaaniAccount: string;
+  mpesaShortcode: string;
+  mpesaPasskey: string;
+  mpesaConsumerKey: string;
+  mpesaConsumerSecret: string;
+  stripePublishableKey: string;
+  stripeSecretKey: string;
 };
+
+export type FooterItem = { id: string; kind: string; title: string; body: string; sort: number };
+export type HelpItem = { id: string; question: string; answer: string; sort: number };
+export type StockAlert = { id: string; productId: string; colorName: string; sizeLabel: string };
 
 export type MainCategory = {
   id: string;
@@ -42,7 +64,7 @@ export type Highlight = { id: string; image: string; sort: number };
 export type Category = { id: string; name: string; department: Department; sort: number };
 export type ProductColor = { id: string; name: string; hex: string; sort: number };
 export type ProductSize = { id: string; label: string; sort: number; inStock: boolean };
-export type ProductStock = { colorName: string; sizeLabel: string; quantity: number };
+export type ProductStock = { colorName: string; sizeLabel: string; quantity: number; hidden?: boolean };
 export type ProductImage = { id: string; image: string; alt: string; colorId: string | null; sort: number };
 export type ProductDepartment = { department: Department; category: string };
 
@@ -74,10 +96,17 @@ export type StorefrontPayload = {
   highlights: Highlight[];
   categories: Category[];
   products: Product[];
+  footer: FooterItem[];
+  help: HelpItem[];
   payments: {
     stripe: boolean;
     stripePublishableKey: string | null;
     mpesa: boolean;
+  };
+  fulfillmentOptions: {
+    pickup: boolean;
+    delivery: boolean;
+    mtaani: boolean;
   };
 };
 
